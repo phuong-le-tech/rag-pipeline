@@ -125,6 +125,41 @@ All three are worded the way users talk, not the way the docs are titled. Candid
 measure next: query rewriting (let the LLM restate the question in documentation vocabulary),
 and returning fewer chunks per page so one page can't fill the top 5.
 
+### Fix #1 measured: cap chunks per page (`max_per_source`)
+
+The CrashLoopBackOff question got the Pod Lifecycle page *three times* in its top 5. Capping how
+many chunks one page may contribute frees those slots for other pages
+([`fusion.cap_per_source`](../src/rag/retrieval/fusion.py), applied after reranking):
+
+| Config | Hit@1 | Hit@5 | Recall@5 | MRR | nDCG@10 | p50 ms |
+|---|---:|---:|---:|---:|---:|---:|
+| hybrid+rerank | 0.480 | 0.800 | 0.547 | 0.613 | 0.548 | 1298 |
+| hybrid+rerank, max 2/page | 0.480 | 0.800 | 0.607 | 0.619 | 0.572 | 1312 |
+| **hybrid+rerank, max 1/page** | 0.480 | **0.880** | **0.640** | **0.628** | **0.584** | 1242 |
+
+Two more questions find a relevant page in the top 5, every metric moves the same way, and
+it costs nothing. One caveat: with max 1/page the top 5 are five *distinct* pages, which a
+page-level metric naturally rewards. If an answer needs two chunks from the same page, answer
+quality could suffer, so the answer-level evaluation must confirm the gain before this becomes
+the default for `rag ask`.
+
+### Fix #2 built, not yet measured: query rewriting (`rewrite`)
+
+[`rewrite.py`](../src/rag/retrieval/rewrite.py): an LLM restates the question in documentation
+vocabulary ("go back to what was running before" → "kubectl rollout undo deployment previous
+revision"). The rewrite is used for **searching only**; the reranker still scores passages
+against the **original** question, since that is the user's real intent. Rewrites are cached
+so each question costs one LLM call per run. Measuring it is blocked on LLM quota (see below).
+
+### Operational lessons from the first batch LLM run
+
+- **Set request timeouts.** The SDKs default to ~10 minutes per request plus retries; one stuck
+  connection to a free endpoint hung the drafting job. `RAG_LLM_TIMEOUT_S` is now 60 s.
+- **Checkpoint every result.** The first drafting run kept 57 drafts in memory and lost them
+  when killed. `draft-questions` now appends and flushes each draft and resumes by id.
+- **Free tiers have daily caps.** OpenRouter allows 50 free-model requests per day without
+  credits, and the cap covers *every* free model on the account, so switching models doesn't help.
+
 ## Trade-offs
 
 - 25 questions is enough to catch large effects and debug failures, not to rank close

@@ -73,6 +73,9 @@ incomplete golden set.
 
 **Hit@k**: 1 if any relevant result appears in the top k, else 0; averaged over questions.
 
+**Query rewriting**: having an LLM restate a user's question in the corpus's vocabulary before
+searching; bridges the gap between how users ask and how docs are written.
+
 **RRF (reciprocal rank fusion)**: merges ranked lists by summing `1 / (k + rank)`; needs no
 score calibration between systems.
 

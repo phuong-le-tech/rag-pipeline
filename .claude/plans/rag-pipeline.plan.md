@@ -58,7 +58,10 @@ ablation table is the centrepiece of the README.
 - [x] 25 hand-written questions (pooled corrections after first run)
 - [ ] LLM-drafted questions (Nemotron free, retry/backoff) + human review → ~100 total
 - [x] hit@k, recall@k, MRR, nDCG@10 (page relevance, chunk ranks)
-- [ ] LLM-judge faithfulness/relevance; citation precision; refusal threshold calibration
+- [x] LLM-judge faithfulness/correctness, citation stats, 15 unanswerable questions (`rag eval-answers`)
+- [ ] run answer evals for real; refusal threshold calibration
+- [x] fix #1 max chunks per page: max 1/page Hit@5 0.80 → 0.88
+- [ ] fix #2 query rewriting: built, measure (needs LLM quota)
 - [x] `rag eval [--config]` → `evals/results/<ts>.json` + Markdown table (first results in README)
 - [ ] fixes to measure: query rewriting, max chunks per page
 - [ ] CI subset gate (fail on >5pt recall drop)

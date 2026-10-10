@@ -2,6 +2,22 @@
 
 Newest first. Each entry: context, decision, consequences. Revisit when evals say otherwise.
 
+## 2026-10-10: Cap chunks per page; rewrite queries for search only
+- **Context**: failure analysis showed one page filling the top 5; user wording differs from
+  doc wording.
+- **Decision**: `RetrieverConfig.max_per_source` (applied after reranking) and
+  `RetrieverConfig.rewrite` (LLM rewrite used for first-stage search; reranker keeps the
+  original question). Both are ablation rows, not defaults, until measured end to end.
+- **Consequence**: max 1/page lifted Hit@5 0.80 → 0.88 at no cost (n = 25); rewrite adds one
+  cached LLM call per question, still to be measured. Answer-level evals decide the defaults.
+
+## 2026-10-10: Batch LLM jobs must time out and checkpoint
+- **Context**: a drafting run hung on one request (SDK default ~10 min timeout) and lost 57
+  in-memory drafts when stopped.
+- **Decision**: `RAG_LLM_TIMEOUT_S=60` on both clients; drafts appended and flushed one by one,
+  resumable by id; error hints distinguish per-minute and daily rate limits.
+- **Consequence**: interruptions cost at most one request; reruns are free for finished work.
+
 ## 2026-10-10: Retrieval eval design (page relevance, chunk ranks, pooled corrections)
 - **Context**: need defensible numbers for every retrieval choice.
 - **Decision**: golden set lists relevant *pages*; metrics count *chunk* ranks with first-find
