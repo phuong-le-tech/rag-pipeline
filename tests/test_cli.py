@@ -131,6 +131,29 @@ def test_search_rerank_flag_uses_reranker(tmp_path, monkeypatch, test_database_u
     assert first.split()[-1] != first_reranked.split()[-1]
 
 
+@pytest.mark.integration
+def test_ask_command_prints_answer_and_cited_sources(tmp_path, monkeypatch, test_database_url):
+    (tmp_path / "tasks").mkdir()
+    (tmp_path / "tasks" / "rollback.md").write_text(
+        "---\ntitle: Rollback\n---\nUse kubectl rollout undo to revert a Deployment.\n"
+    )
+    monkeypatch.setenv("RAG_DATABASE_URL", test_database_url)
+    monkeypatch.setenv("RAG_EMBEDDING_BACKEND", "fake")
+    monkeypatch.setenv("RAG_EMBEDDING_DIM", "8")
+    monkeypatch.setenv("RAG_LLM_BACKEND", "fake")
+    with psycopg.connect(test_database_url) as conn:
+        conn.execute("TRUNCATE documents RESTART IDENTITY CASCADE")
+    runner.invoke(cli.app, ["ingest", str(tmp_path)])
+
+    result = runner.invoke(cli.app, ["ask", "how do I revert?", "--no-rerank"])
+
+    assert result.exit_code == 0, result.output
+    assert "fake answer" in result.output
+    assert "Sources" in result.output
+    assert "[1] Rollback" in result.output
+    assert "https://kubernetes.io/docs/tasks/rollback/" in result.output
+
+
 def test_search_rejects_unknown_mode(monkeypatch):
     monkeypatch.setenv("RAG_EMBEDDING_BACKEND", "fake")
 

@@ -46,10 +46,12 @@ ablation table is the centrepiece of the README.
 - [x] Fixed heading-anchor noise; `LOADER_VERSION` in fingerprint; full re-ingest running
 
 ### Phase 3 — Cited generation (M)
-- [ ] numbered-context prompt, `[n]` citation rule
-- [ ] Claude streaming wrapper
-- [ ] citation parser + validator (cited ⊆ retrieved)
-- [ ] refusal under rerank-score threshold; CLI `rag ask`
+- [x] numbered-context prompt, `[n]` citation rule, exact refusal sentence
+- [x] Claude streaming wrapper (`claude-sonnet-5-5`, key via SecretStr setting)
+- [x] citation parser + validator (cited ⊆ retrieved)
+- [x] refusal on empty retrieval + model refusal; CLI `rag ask`
+- [ ] score-threshold refusal: calibrate in Phase 4
+- [ ] first real Claude run (needs `ANTHROPIC_API_KEY` in `.env`)
 
 ### Phase 4 — Evaluation (H)
 - [ ] `evals/golden.jsonl` `{id, question, reference_answer, relevant_sources[], tags[]}`

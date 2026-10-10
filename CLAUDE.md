@@ -46,7 +46,12 @@ uv run pytest -m integration                   # needs compose DB
 - `src/rag/retrieval/`: `search.py` (dense via pgvector, keyword via FTS with OR semantics),
   `fusion.py` (`rrf`), `rerank.py` (cross-encoder, `RAG_RERANKER_MODEL`, MiniLM default),
   `retriever.py` (`Retriever` + `RetrieverConfig` switches = ablation rows, incl. `rerank`)
-- `src/rag/cli.py`: typer app, entry point `rag` (`init-db`, `chunk`, `ingest`, `search`)
+- `src/rag/generate/`: `prompt.py` (numbered passages + rules, exact `REFUSAL` sentence),
+  `citations.py` (parse/validate `[n]`), `generator.py` (`ClaudeGenerator`, `FakeGenerator`,
+  `RAG_LLM_BACKEND`, `RAG_LLM_MODEL`), `answer.py` (`answer_question -> Answer`)
+- `src/rag/cli.py`: typer app, entry point `rag` (`init-db`, `chunk`, `ingest`, `search`, `ask`)
+- `ANTHROPIC_API_KEY` lives in `.env` (gitignored), read into `Settings.anthropic_api_key`
+  (SecretStr). Never print it, never commit it; tests use `RAG_LLM_BACKEND=fake`.
 - **Changing cleaning output? Bump `LOADER_VERSION` in `ingest/loaders.py`**, or incremental
   ingest will skip every doc (raw-file hashes don't change) and keep stale vectors.
 - Integration tests use a separate `rag_test` DB created by `tests/conftest.py` (dim 8);

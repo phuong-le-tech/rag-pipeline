@@ -43,8 +43,14 @@ configuration) changed, detected via hashes, instead of rebuilding the whole ind
 **ef_search (HNSW)**: how many candidates the HNSW index explores per query. Higher means
 better recall but slower. It also caps the number of rows returned, so it must be ≥ `LIMIT`.
 
+**Grounding**: constraining an LLM to answer only from supplied context rather than its
+training data.
+
 **Golden set**: hand-checked questions with known relevant sources and reference answers, used
 to measure the system.
+
+**Hallucinated citation**: a citation pointing to a source that wasn't provided (e.g. `[7]`
+when only 5 passages were given). Detectable mechanically, unlike unsupported claims.
 
 **HNSW**: graph-based ANN index; fast, accurate, memory-hungry.
 

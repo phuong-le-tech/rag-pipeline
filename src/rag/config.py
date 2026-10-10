@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from rag.ingest.loaders import LOADER_VERSION
@@ -9,7 +9,9 @@ EmbeddingBackend = Literal["local", "openai", "fake"]
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="RAG_", env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_prefix="RAG_", env_file=".env", extra="ignore", populate_by_name=True
+    )
 
     database_url: str = "postgresql://rag:rag@localhost:5433/rag"
     chunk_max_chars: int = Field(default=1500, gt=0)
@@ -21,6 +23,12 @@ class Settings(BaseSettings):
     # CPU threads for local models; None lets ONNX Runtime decide (can oversubscribe).
     embedding_threads: int | None = Field(default=None, gt=0)
     reranker_model: str = "Xenova/ms-marco-MiniLM-L-6-v2"
+
+    llm_backend: Literal["anthropic", "fake"] = "anthropic"
+    llm_model: str = "claude-sonnet-5-5"
+    llm_max_tokens: int = Field(default=1024, gt=0)
+    # Read from ANTHROPIC_API_KEY (env or .env), no RAG_ prefix. SecretStr hides it in reprs.
+    anthropic_api_key: SecretStr | None = Field(default=None, alias="ANTHROPIC_API_KEY")
 
     def embedding_model_name(self) -> str:
         return {

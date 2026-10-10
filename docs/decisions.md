@@ -2,6 +2,22 @@
 
 Newest first. Each entry: context, decision, consequences. Revisit when evals say otherwise.
 
+## 2026-10-10: Grounded prompt with numbered passages, validated citations, exact refusal
+- **Context**: answers must be verifiable and must not invent sources or facts.
+- **Decision**: numbered context blocks (heading path + URL + text); rules to cite `[n]` per
+  factual sentence and to reply with one exact refusal sentence. Code validates citation numbers
+  and refuses without an LLM call when retrieval is empty. No score-threshold refusal until
+  Phase 4 calibrates one.
+- **Consequence**: hallucinated citation numbers are caught mechanically; faithfulness of valid
+  citations still needs an LLM judge. Model default `claude-sonnet-5-5`, configurable.
+
+## 2026-10-10: API key via `Settings.anthropic_api_key` (SecretStr)
+- **Context**: pydantic-settings reads `.env` but doesn't export it, so the SDK's own
+  env-var lookup would miss a key stored in `.env`.
+- **Decision**: read `ANTHROPIC_API_KEY` (no `RAG_` prefix) into a `SecretStr`, pass it to the
+  client explicitly.
+- **Consequence**: `.env` and exported variables both work; the key never prints in reprs.
+
 ## 2026-10-10: MiniLM-L-6 cross-encoder as default reranker (not bge-reranker-v2-m3)
 - **Context**: the plan named `bge-reranker-v2-m3` (2.3 GB, ~570 MB int8). On this CPU the
   small MiniLM already costs ~3.7 s per query for 50 candidates.

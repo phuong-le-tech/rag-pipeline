@@ -2,6 +2,7 @@ import time
 from pathlib import Path
 from typing import Annotated
 
+import anthropic
 import psycopg
 import typer
 from pgvector.psycopg import register_vector
@@ -9,6 +10,8 @@ from pgvector.psycopg import register_vector
 from rag.config import Settings
 from rag.db import connect, init_db
 from rag.embed import make_embedder
+from rag.generate.answer import answer_question
+from rag.generate.generator import make_generator
 from rag.ingest.chunking import chunk_markdown
 from rag.ingest.loaders import iter_documents
 from rag.ingest.pipeline import ingest
@@ -25,6 +28,51 @@ def _database_unreachable(exc: Exception) -> typer.Exit:
     typer.secho(f"Cannot reach database: {exc}", fg="red", err=True)
     typer.echo("Is it running? Try: docker compose up -d", err=True)
     return typer.Exit(1)
+
+
+@app.command("ask")
+def ask_cmd(
+    question: Annotated[str, typer.Argument(help="Question about Kubernetes.")],
+    k: Annotated[int, typer.Option("-k", help="Passages sent to the LLM.")] = 5,
+    rerank: Annotated[bool, typer.Option(help="Rerank candidates before answering.")] = True,
+    generated: Annotated[bool, typer.Option(help="Include auto-generated reference pages.")] = True,
+) -> None:
+    """Answer a question from the docs, with [n] citations to the passages used."""
+    settings = Settings()
+    config = RetrieverConfig(k=k, candidates=max(50, k), include_generated=generated, rerank=rerank)
+    try:
+        conn = connect(settings)
+    except psycopg.OperationalError as exc:
+        raise _database_unreachable(exc) from exc
+
+    with conn:
+        register_vector(conn)
+        reranker = make_reranker(settings) if rerank else None
+        retriever = Retriever(conn, make_embedder(settings), reranker)
+        try:
+            result = answer_question(
+                question,
+                retriever,
+                make_generator(settings),
+                config,
+                on_text=lambda piece: typer.echo(piece, nl=False),
+            )
+        except anthropic.AnthropicError as exc:
+            typer.secho(f"\nLLM call failed: {exc}", fg="red", err=True)
+            typer.echo("Set ANTHROPIC_API_KEY in .env (never commit it).", err=True)
+            raise typer.Exit(1) from exc
+
+    if result.refused and not result.retrieved:
+        typer.echo(result.text)
+    typer.echo("")
+    if result.invalid_citations:
+        cited = ", ".join(f"[{n}]" for n in result.invalid_citations)
+        typer.secho(f"Warning: answer cites passages that don't exist: {cited}", fg="yellow")
+    if result.sources:
+        typer.secho("\nSources", bold=True)
+        for source in result.sources:
+            hit = source.hit
+            typer.echo(f"[{source.number}] {hit.heading or hit.title}\n    {hit.url}")
 
 
 @app.command("init-db")
