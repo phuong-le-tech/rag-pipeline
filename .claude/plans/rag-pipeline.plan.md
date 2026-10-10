@@ -36,7 +36,7 @@ ablation table is the centrepiece of the README.
 - [x] `ingest/pipeline.py`: incremental by `content_hash` + pipeline fingerprint, prune, one transaction per doc
 - [x] CLI `rag ingest <path>`: added/updated/skipped/deleted counts, progress bar
 - [x] Integration tests (`@pytest.mark.integration`) against throwaway `rag_test` DB
-- [ ] First full ingest of the corpus (running)
+- [x] Full ingest: 1,652 docs, 17,730 chunks, all `loader2`; re-run skips all 1,652 in 0.0s
 
 ### Phase 2 — Retrieval (M)
 - [x] dense (cosine, ef_search + iterative scan), keyword (OR tsquery + `ts_rank_cd`)
