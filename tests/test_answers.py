@@ -129,11 +129,11 @@ class SequenceJudge:
         return self.outputs.pop(0)
 
 
-def test_judge_is_asked_again_when_its_json_is_malformed():
+def test_judge_is_asked_again_when_its_output_has_no_usable_json():
     retriever = StubRetriever({"roll back?": [hit(1)]})
     generator = ByQuestionGenerator({"roll back?": "Undo [1]."})
     valid = json.dumps({"claims": [{"text": "undo", "supported": True}], "correct": "yes"})
-    malformed = '{"claims": [{"text": "undo", "supported": true}]], "correct": "yes"}'
+    malformed = "Sorry, I cannot grade this answer."  # no JSON at all: repair can't help
     judge = SequenceJudge([malformed, valid])
 
     report = evaluate_answers(

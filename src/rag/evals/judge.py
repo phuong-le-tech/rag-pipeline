@@ -12,6 +12,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+import json_repair
+
 from rag.generate.citations import CITATION_RE, check_citations
 from rag.generate.prompt import format_context
 from rag.retrieval.search import Hit
@@ -74,6 +76,10 @@ def parse_judgement(text: str) -> Judgement | None:
     try:
         data = json.loads(match.group(0))
     except json.JSONDecodeError:
+        # Judges sometimes slip on syntax (a stray "]" after the claims list). Repair is a
+        # fallback only; the shape checks below still reject anything that isn't a verdict.
+        data = json_repair.loads(match.group(0))
+    if not isinstance(data, dict):
         return None
     claims = data.get("claims")
     correct = data.get("correct")

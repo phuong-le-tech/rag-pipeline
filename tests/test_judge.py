@@ -122,3 +122,20 @@ def test_load_unanswerable_rejects_duplicates(tmp_path):
 
     with pytest.raises(ValueError, match="duplicate"):
         load_unanswerable(path)
+
+
+def test_parse_judgement_repairs_stray_bracket_from_real_sonnet_output():
+    text = (
+        '{"claims": [{"text": "Undo reverts the Deployment.", "supported": true}, '
+        '{"text": "--to-revision picks a revision.", "supported": true}]], "correct": "yes"}'
+    )
+
+    judgement = parse_judgement(text)
+
+    assert judgement is not None
+    assert judgement.n_claims == 2
+    assert judgement.correct == "yes"
+
+
+def test_parse_judgement_still_rejects_wrong_shape_after_repair():
+    assert parse_judgement('{"claims": {"text": "x"}, "correct": "yes"}') is None
