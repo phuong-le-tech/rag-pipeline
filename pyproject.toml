@@ -31,7 +31,8 @@ packages = ["src/rag"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+addopts = "-q --strict-markers"
+markers = ["integration: needs the docker compose Postgres (docker compose up -d)"]
 
 [tool.ruff]
 line-length = 100
