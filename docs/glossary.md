@@ -31,8 +31,14 @@ the top-k only.
 **ONNX**: portable format for neural network models; ONNX Runtime runs them fast on CPU
 without installing PyTorch. fastembed uses it.
 
+**Iterative index scan**: pgvector 0.8 feature that keeps walking the HNSW graph when a
+`WHERE` filter discards candidates, so filtered queries still return `LIMIT` rows.
+
 **Incremental ingestion**: re-indexing only documents whose content (or processing
 configuration) changed, detected via hashes, instead of rebuilding the whole index.
+
+**ef_search (HNSW)**: how many candidates the HNSW index explores per query. Higher means
+better recall but slower. It also caps the number of rows returned, so it must be ≥ `LIMIT`.
 
 **Golden set**: hand-checked questions with known relevant sources and reference answers, used
 to measure the system.

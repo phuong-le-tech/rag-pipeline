@@ -17,7 +17,7 @@ Each chapter follows the same shape:
 | 1 | [RAG fundamentals](01-rag-fundamentals.md) | ✅ |
 | 2 | [Ingestion: loading, cleaning, chunking](02-ingestion.md) | ✅ |
 | 3 | [Storage and indexing: embeddings, pgvector, full-text](03-storage-and-indexing.md) | ✅ schema + embedders |
-| 4 | Retrieval: dense, BM25, hybrid, RRF, reranking | ⏳ Phase 2 |
+| 4 | [Retrieval: dense, keyword, hybrid, RRF](04-retrieval.md) | ✅ reranking next |
 | 5 | Generation: prompting, citations, refusal | ⏳ Phase 3 |
 | 6 | Evaluation: golden sets, metrics, ablations | ⏳ Phase 4 |
 | 7 | Serving: API, streaming, cost, deployment | ⏳ Phase 5 |

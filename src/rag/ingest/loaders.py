@@ -15,6 +15,10 @@ from pathlib import Path
 
 import yaml
 
+# Bump whenever cleaning output changes: it is part of the pipeline fingerprint, so every
+# document gets re-ingested even though its raw file (and content_hash) did not change.
+LOADER_VERSION = 2
+
 DOCS_BASE_URL = "https://kubernetes.io/docs/"
 INDEX_FILES = {"_index.md", "index.md"}
 ADMONITIONS = ("note", "caution", "warning")
@@ -27,6 +31,7 @@ ADMONITION_RE = re.compile(
 SHORTCODE_RE = re.compile(r"{{[<%].*?[>%]}}", re.DOTALL)
 COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 BLANK_RUN_RE = re.compile(r"\n{3,}")
+HEADING_ANCHOR_RE = re.compile(r"^(#{1,6}\s.*?)\s*\{#[^}]*\}\s*$", re.MULTILINE)
 
 # HTML -> text. Only known tag names are touched, so placeholders like <pod-name> survive.
 CELL = "\x1f"
@@ -81,6 +86,7 @@ def clean_hugo(text: str) -> str:
     text = ADMONITION_RE.sub(_admonition, text)
     text = SHORTCODE_RE.sub("", text)
     text = html_to_text(text)
+    text = HEADING_ANCHOR_RE.sub(r"\1", text)
     return BLANK_RUN_RE.sub("\n\n", text).strip()
 
 

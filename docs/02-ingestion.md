@@ -79,6 +79,9 @@ Cleaning rules (`clean_hugo`):
   `<code>`/`<tt>` become backticks, block tags become line breaks, inline tags are dropped,
   entities are decoded (`&amp;` → `&`). Only *known* tag names are touched, so placeholders
   such as `<pod-name>` in commands survive.
+- Heading anchor IDs (`## Resizing Pods {#pod-resize}`) → removed. Hugo uses them for link
+  targets; left in, they polluted heading paths, vectors and keyword matches. Found by
+  reading real search results (chapter 4), not by unit tests.
 - Every document gets `generated = True` when its frontmatter says `auto_generated: true`
   **or** it sits in a `generated/` folder (the frontmatter flag alone misses kubeadm's pages).
 
@@ -138,12 +141,15 @@ Three ideas worth knowing:
 1. **Content hash.** A sha256 of the raw file. Same hash means same content, so there is no
    need to re-embed. Upstream docs change a few pages per week; re-embedding 17,000 chunks for
    that would be wasteful.
-2. **Pipeline fingerprint**: `backend:model:dim:max_chars`, e.g.
-   `local:BAAI/bge-small-en-v1.5:384:1500`. The hash alone isn't enough: if you change the
+2. **Pipeline fingerprint**: `backend:model:dim:max_chars:loaderN`, e.g.
+   `local:BAAI/bge-small-en-v1.5:384:1500:loader2`. The hash alone isn't enough: if you change the
    chunk size or the embedding model, the *text* is unchanged but every stored vector is now
    wrong. Mixing vectors from two models in one index silently breaks search, since their
    coordinates mean different things. The fingerprint is stored in `documents.metadata`, and
-   any change forces re-ingestion.
+   any change forces re-ingestion. `loaderN` is `LOADER_VERSION` in `loaders.py`: bump it
+   whenever cleaning output changes. The anchor fix above taught this the hard way, because the
+   raw files (and so their hashes) hadn't changed, and without the version nothing would have
+   been re-embedded.
 3. **One transaction per document.** Embedding happens *before* the transaction opens, so a
    model crash leaves the previous version untouched. Inside the transaction, the old chunks
    are deleted and the new ones inserted atomically: a search never sees a half-updated page.

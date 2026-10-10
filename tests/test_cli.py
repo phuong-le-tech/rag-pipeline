@@ -4,6 +4,7 @@ from typer.testing import CliRunner
 
 from rag import cli
 from rag.config import Settings
+from rag.ingest.loaders import LOADER_VERSION
 
 runner = CliRunner()
 
@@ -49,12 +50,14 @@ def test_init_db_success(monkeypatch):
     assert "Schema ready." in result.output
 
 
-def test_pipeline_fingerprint_reflects_backend_model_dim_and_chunk_size():
+def test_pipeline_fingerprint_reflects_backend_model_dim_chunk_size_and_loader():
     settings = Settings(embedding_backend="local", embedding_dim=384, chunk_max_chars=1500)
 
-    assert settings.pipeline_fingerprint() == "local:BAAI/bge-small-en-v1.5:384:1500"
+    assert settings.pipeline_fingerprint() == (
+        f"local:BAAI/bge-small-en-v1.5:384:1500:loader{LOADER_VERSION}"
+    )
     assert Settings(embedding_backend="fake", embedding_dim=8).pipeline_fingerprint() == (
-        "fake:fake:8:1500"
+        f"fake:fake:8:1500:loader{LOADER_VERSION}"
     )
 
 

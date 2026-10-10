@@ -39,10 +39,11 @@ ablation table is the centrepiece of the README.
 - [ ] First full ingest of the corpus (running)
 
 ### Phase 2 — Retrieval (M)
-- [ ] dense (cosine), keyword (`websearch_to_tsquery` + `ts_rank_cd`)
-- [ ] `fusion.py` RRF (k=60), pure + unit-tested
-- [ ] `Reranker` protocol: cross-encoder + passthrough
-- [ ] `RetrieverConfig(mode, rerank, k)`; CLI `rag search`
+- [x] dense (cosine, ef_search + iterative scan), keyword (OR tsquery + `ts_rank_cd`)
+- [x] `fusion.py` RRF (k=60), pure + unit-tested
+- [ ] `Reranker` protocol: cross-encoder (fastembed `bge-reranker-v2-m3`, no torch) + passthrough
+- [x] `RetrieverConfig(mode, k, candidates, include_generated, rrf_k)`; CLI `rag search`
+- [x] Fixed heading-anchor noise; `LOADER_VERSION` in fingerprint; full re-ingest running
 
 ### Phase 3 — Cited generation (M)
 - [ ] numbered-context prompt, `[n]` citation rule

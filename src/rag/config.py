@@ -3,6 +3,8 @@ from typing import Literal
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from rag.ingest.loaders import LOADER_VERSION
+
 EmbeddingBackend = Literal["local", "openai", "fake"]
 
 
@@ -34,5 +36,6 @@ class Settings(BaseSettings):
                 self.embedding_model_name(),
                 str(self.embedding_dim),
                 str(self.chunk_max_chars),
+                f"loader{LOADER_VERSION}",
             )
         )

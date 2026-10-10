@@ -53,6 +53,12 @@ def test_clean_hugo_keeps_admonition_content_with_label():
     assert clean_hugo(text) == "**Note:** Be careful.\n**Warning:** Data loss."
 
 
+def test_clean_hugo_strips_heading_anchor_ids():
+    text = "## Resizing Pods {#pod-resize}\nKeep {#this} in prose.\n### Static policy {#cpu-static}"
+
+    assert clean_hugo(text) == "## Resizing Pods\nKeep {#this} in prose.\n### Static policy"
+
+
 def test_clean_hugo_collapses_blank_runs():
     assert clean_hugo("a\n\n\n\n\nb") == "a\n\nb"
 

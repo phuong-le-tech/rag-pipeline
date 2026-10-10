@@ -2,6 +2,27 @@
 
 Newest first. Each entry: context, decision, consequences. Revisit when evals say otherwise.
 
+## 2026-10-10: Loader version in the pipeline fingerprint
+- **Context**: fixing heading anchors changed cleaned text but not raw files, so content hashes
+  matched and incremental ingest would have skipped every document.
+- **Decision**: `LOADER_VERSION` constant, part of the fingerprint; bump on any cleaning change.
+- **Consequence**: cleaning fixes trigger a full re-embed (~1 h on CPU). Forgetting the bump
+  silently keeps stale vectors, so it's called out in `CLAUDE.md`.
+
+## 2026-10-10: Keyword search uses OR semantics; RRF k=60 for hybrid
+- **Context**: `websearch_to_tsquery` ANDs all words and excludes most chunks for natural
+  questions.
+- **Decision**: OR the stemmed terms, rank with `ts_rank_cd` (heading weight A > body B). Fuse
+  with dense results by RRF (k=60), which needs no score calibration.
+- **Consequence**: high recall, noisy precision (first real query: keyword #1 off-topic). Relies
+  on the reranker to clean up. Length normalisation is a candidate fix, to be measured.
+
+## 2026-10-10: Raise `hnsw.ef_search`, enable iterative scans
+- **Context**: HNSW returns at most `ef_search` (default 40) rows and filters after the search.
+- **Decision**: set `ef_search = max(40, candidates)` and `iterative_scan = relaxed_order` per
+  search; re-sort by distance in an outer query.
+- **Consequence**: asking for 50 candidates returns 50, with or without the generated filter.
+
 ## 2026-10-10: Incremental ingestion keyed on content hash + pipeline fingerprint
 - **Context**: re-embedding the whole corpus takes 35–60 min on CPU; upstream changes few pages.
 - **Decision**: skip a document when `(content_hash, backend:model:dim:max_chars)` matches the

@@ -43,7 +43,11 @@ uv run pytest -m integration                   # needs compose DB
   set dim 1536), `fake` (tests only). No Anthropic embeddings exist.
 - `src/rag/ingest/pipeline.py`: incremental ingest; skip when `(content_hash, fingerprint)`
   matches; one transaction per doc; prunes docs missing from disk
-- `src/rag/cli.py`: typer app, entry point `rag` (`init-db`, `chunk`, `ingest`)
+- `src/rag/retrieval/`: `search.py` (dense via pgvector, keyword via FTS with OR semantics),
+  `fusion.py` (`rrf`), `retriever.py` (`Retriever` + `RetrieverConfig` switches = ablation rows)
+- `src/rag/cli.py`: typer app, entry point `rag` (`init-db`, `chunk`, `ingest`, `search`)
+- **Changing cleaning output? Bump `LOADER_VERSION` in `ingest/loaders.py`**, or incremental
+  ingest will skip every doc (raw-file hashes don't change) and keep stale vectors.
 - Integration tests use a separate `rag_test` DB created by `tests/conftest.py` (dim 8);
   they never touch the real index and skip if Postgres is down
 - Planned: `retrieval/`, `generate/`, `evals/` (see plan)
