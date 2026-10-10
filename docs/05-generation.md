@@ -1,7 +1,6 @@
 # 5. Generation: grounded prompts, citations, refusal
 
-> Status: `rag ask` works end to end with a fake LLM in tests. The first real Claude run waits
-> for `ANTHROPIC_API_KEY` in `.env`.
+> Status: `rag ask` works end to end with Claude (`claude-sonnet-5-5`). First real run below.
 
 ## Concept
 
@@ -91,6 +90,36 @@ answer, `stream()` for token-by-token output in the CLI. Model `claude-sonnet-5-
 `.env`) into a `SecretStr`, which prints as `**********` if logged, and is passed to the
 client explicitly. pydantic-settings reads `.env` but does *not* export it to the process
 environment, so relying on the SDK's own env lookup would silently ignore `.env`.
+
+## First real run (2026-10-10, full index, hybrid + rerank, k=5)
+
+| Question | Result | Verdict |
+|---|---|---|
+| How do I roll back a deployment? | `kubectl rollout undo …`, `--to-revision=2`, how to verify, notes on revision history; cites [3] and [2] only | ✓ correct, every claim cited |
+| How do I see which pods use the most CPU? | Shows `kubectl top pod <name>` for one Pod, says the docs given don't cover sorting, suggests running it per Pod | ✗ missed `kubectl top pod --sort-by=cpu` |
+| How do I bake a sourdough bread? | "I don't know based on the provided documentation." | ✓ refused, no sources |
+
+End-to-end time: 4–7 s per question, including Python start-up and loading the embedding and
+reranker models.
+
+### Failure analysis #1: "which pods use the most CPU"
+
+Ask **which stage broke** (chapter 1) before fixing anything:
+
+1. **Generation?** No. The model said the passages didn't cover sorting, which was true of the
+   5 passages it received. Grounding worked. Its last sentence ("run it per Pod") is uncited
+   advice, a small breach of the rules worth tracking.
+2. **Retrieval?** Yes. All 5 passages were about *setting* CPU requests and limits, none about
+   *observing* usage. Worse, the result depends on phrasing: "which pods **are using** the most
+   CPU" ranked the `kubectl top pod` page #1 (chapter 4), while "which pods **use** the most
+   CPU" doesn't retrieve it at all.
+3. **Chunking?** Partly. The literal `--sort-by=cpu` example lives in `quick-reference.md` in a
+   chunk whose heading path is "Delete all pods matching the awk pattern…": a cheat sheet of
+   unrelated commands under a misleading heading, so its contextual header points the wrong way.
+
+Candidate fixes, none applied yet because they must be *measured*: query rewriting (expand the
+question before searching), a smaller chunk size for cheat-sheet pages, more candidates before
+reranking. This question goes into the golden set (Phase 4) so every fix is scored against it.
 
 ## Trade-offs
 

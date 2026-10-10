@@ -51,7 +51,7 @@ ablation table is the centrepiece of the README.
 - [x] citation parser + validator (cited ⊆ retrieved)
 - [x] refusal on empty retrieval + model refusal; CLI `rag ask`
 - [ ] score-threshold refusal: calibrate in Phase 4
-- [ ] first real Claude run (needs `ANTHROPIC_API_KEY` in `.env`)
+- [x] first real Claude run: 2/3 correct, refusal works; failure #1 (CPU sort) = retrieval, logged in docs ch. 5
 
 ### Phase 4 — Evaluation (H)
 - [ ] `evals/golden.jsonl` `{id, question, reference_answer, relevant_sources[], tags[]}`
