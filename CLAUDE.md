@@ -35,8 +35,10 @@ uv run pytest -m integration                   # needs compose DB
 - `src/rag/db.py` + `schema.sql`: raw psycopg; `{embedding_dim}` templated, literal braces doubled `{{}}`
 - `src/rag/ingest/loaders.py`: Hugo Markdown → `Document` (frontmatter, shortcode cleanup, URL)
 - `src/rag/ingest/chunking.py`: heading-aware chunker → `Chunk(ord, heading, content)`
+- `src/rag/embed/`: `Embedder` protocol, `OpenAIEmbedder` (batched, needs `OPENAI_API_KEY`),
+  `FakeEmbedder` (deterministic, tests only)
 - `src/rag/cli.py`: typer app, entry point `rag`
-- Planned: `embed/`, `retrieval/`, `generate/`, `evals/` (see plan)
+- Planned: `retrieval/`, `generate/`, `evals/` (see plan)
 
 ## Conventions
 - TDD: write the failing test first, run it, then implement. Coverage ≥ 80%.

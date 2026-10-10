@@ -32,7 +32,7 @@ ablation table is the centrepiece of the README.
 - [x] `scripts/fetch_corpus.sh`: sparse clone into `data/`, SHA recorded in `CORPUS_REF`
 - [x] `ingest/loaders.py`: frontmatter, shortcodes, HTML→text, `generated` flag → `Document`
 - [x] Corpus profiled: 1,652 docs, 17,863 chunks; generated = 55% of chunks (kept, tagged)
-- [ ] `embed/`: `Embedder` protocol; `OpenAIEmbedder` (batch, retry), `FakeEmbedder` (tests)
+- [x] `embed/`: `Embedder` protocol; `OpenAIEmbedder` (batch, retry), `FakeEmbedder` (tests)
 - [ ] `ingest/pipeline.py`: incremental by `content_hash`, delete vanished docs, one transaction per doc
 - [ ] CLI `rag ingest <path>`: added/updated/skipped/deleted counts
 - [ ] Integration tests (`@pytest.mark.integration`) against compose DB

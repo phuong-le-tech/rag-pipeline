@@ -1,6 +1,6 @@
 # 3. Storage and indexing: embeddings, pgvector, full-text
 
-> Status: schema exists; embeddings arrive later in Phase 1. This chapter will grow.
+> Status: schema and embedders exist; ingestion into the DB lands next in Phase 1.
 
 ## Concept
 
@@ -29,6 +29,29 @@ it stems words (`rolling` → `roll`), drops stop-words, and ranks with `ts_rank
 
 Sparse search is strong on exact identifiers and weak on synonyms. The two failure profiles
 are opposite, which is why **hybrid search** (chapter 4) combines them.
+
+## In this repo: embedders, [`src/rag/embed/`](../src/rag/embed/)
+
+Every embedding backend implements one small interface (a `Protocol`):
+
+```python
+class Embedder(Protocol):
+    dim: int
+    def embed(self, texts: Sequence[str]) -> list[list[float]]: ...
+```
+
+| Implementation | Use | Notes |
+|---|---|---|
+| `OpenAIEmbedder` | real indexing | batches of 128 texts per API call, results re-sorted by `index` (the API may return them out of order), dimension checked, blank text rejected, retries with backoff from the SDK |
+| `FakeEmbedder` | tests | unit vectors seeded by a hash of the text: same text gives the same vector, no network, no cost |
+
+Why bother with a fake? Unit tests must be fast, free and deterministic. The fake tests the
+*plumbing* (ordering, storage, SQL) while saying nothing about *quality*. Quality is what the
+eval harness measures, with the real model.
+
+Why batch? One HTTP call per chunk would mean ~18,000 round trips for this corpus. Batches of
+128 make it ~140 calls. At ~3.7M tokens, embedding the full corpus with
+`text-embedding-3-small` costs roughly $0.07.
 
 ## In this repo: [`src/rag/schema.sql`](../src/rag/schema.sql)
 
