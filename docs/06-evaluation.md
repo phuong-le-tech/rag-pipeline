@@ -91,7 +91,55 @@ uv run rag review-drafts        # y = accept, e = edit question, n = reject, q =
 An unreviewed LLM question never enters the golden set: the person reviewing is the quality
 gate.
 
-## Results (2026-10-10, corpus `b2e60d8`, `local:BAAI/bge-small-en-v1.5:384:1500:loader2`, reranker MiniLM-L-6, 25 questions)
+## Results v2: 94 questions (2026-10-10, corpus `b2e60d8`, `local:BAAI/bge-small-en-v1.5:384:1500:loader2`, reranker MiniLM-L-6, rewrites by Nemotron 3 Super)
+
+25 hand-written + 69 LLM-drafted questions reviewed against their source passages (see
+"Growing the golden set"). Results file `evals/results/2026-10-10T23-13-58Z.json`.
+
+| Config | Hit@1 | Hit@5 | Recall@5 | MRR | nDCG@10 | p50 ms |
+|---|---:|---:|---:|---:|---:|---:|
+| dense | 0.543 | 0.766 | 0.725 | 0.647 | 0.662 | 9 |
+| keyword | 0.234 | 0.500 | 0.456 | 0.358 | 0.396 | 44 |
+| hybrid | 0.511 | 0.766 | 0.697 | 0.609 | 0.620 | 58 |
+| hybrid+rerank | 0.628 | 0.894 | 0.821 | 0.742 | 0.748 | 1448 |
+| hybrid, no generated | 0.543 | 0.766 | 0.709 | 0.626 | 0.636 | 39 |
+| hybrid+rerank, no generated | 0.628 | 0.862 | 0.800 | 0.720 | 0.721 | 1370 |
+| hybrid+rerank, max 2/page | 0.628 | 0.894 | 0.837 | 0.744 | 0.755 | 1323 |
+| **hybrid+rerank, max 1/page** (`rag ask` default) | 0.628 | 0.915 | 0.851 | 0.749 | 0.763 | 1314 |
+| hybrid+rerank, rewrite | 0.638 | 0.904 | 0.817 | 0.756 | 0.764 | 3611 |
+| hybrid+rerank, rewrite, max 1/page | 0.638 | 0.926 | 0.862 | 0.762 | 0.786 | 1422* |
+
+\* Rewrites were cached from the previous row; live, each new question adds one LLM call.
+
+**By who wrote the question** (Hit@5 / MRR):
+
+| Config | Hand-written (25) | LLM-drafted (69) |
+|---|---|---|
+| dense | 0.600 / 0.576 | 0.826 / 0.673 |
+| hybrid+rerank | 0.800 / 0.613 | 0.928 / 0.789 |
+| hybrid+rerank, max 1/page | 0.880 / 0.628 | 0.928 / 0.793 |
+| hybrid+rerank, rewrite | 0.920 / 0.714 | 0.899 / 0.771 |
+| hybrid+rerank, rewrite, max 1/page | 0.960 / 0.719 | 0.913 / 0.777 |
+
+What the bigger set changed:
+
+1. **LLM-drafted questions are easier, even after review.** Dense search scores 0.83 Hit@5 on
+   them vs 0.60 on hand-written ones. They still lean on the passage's vocabulary, even when
+   reworded. Without the breakdown, every headline number would look ~0.15 better than it is
+   for real users. Always report question origin separately.
+2. **Reranking is the robust win.** Hit@5 0.77 → 0.89 and MRR 0.61 → 0.74, consistent in
+   every subgroup. Worth its ~1.3 s.
+3. **Max 1 chunk per page is a free, consistent gain** (+0.08 Hit@5 on hand-written
+   questions, neutral elsewhere). It is now the `rag ask` default.
+4. **Query rewriting was overstated by the first 25 questions.** It helps hand-written
+   questions a lot (0.80 → 0.92) but slightly hurts ones already phrased like the docs, and it
+   costs an LLM call per query. Its 0.96 on the first set mostly reflected my own question
+   style. It stays an opt-in flag (`rag ask --rewrite`).
+5. **Keep the generated pages.** With reranking, removing them lowers Hit@5 (0.894 → 0.862).
+   The open question from chapter 2 is settled.
+6. **Dense ≫ keyword** at every sample size.
+
+## Results v1 (2026-10-10, corpus `b2e60d8`, `local:BAAI/bge-small-en-v1.5:384:1500:loader2`, reranker MiniLM-L-6, 25 questions)
 
 | Config | Hit@1 | Hit@5 | Recall@5 | MRR | nDCG@10 | p50 ms |
 |---|---:|---:|---:|---:|---:|---:|

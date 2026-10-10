@@ -56,12 +56,13 @@ ablation table is the centrepiece of the README.
 ### Phase 4 — Evaluation (H)
 - [x] `evals/golden.jsonl` `{id, question, relevant_sources[], reference_answer, tags[], origin}`
 - [x] 25 hand-written questions (pooled corrections after first run)
-- [ ] LLM-drafted questions (Nemotron free, retry/backoff) + human review → ~100 total
+- [x] 97 Nemotron drafts → 69 accepted after review (Claude, reasons logged) → 94 golden questions
 - [x] hit@k, recall@k, MRR, nDCG@10 (page relevance, chunk ranks)
 - [x] LLM-judge faithfulness/correctness, citation stats, 15 unanswerable questions (`rag eval-answers`)
 - [ ] run answer evals for real; refusal threshold calibration
 - [x] fix #1 max chunks per page: max 1/page Hit@5 0.80 → 0.88
-- [ ] fix #2 query rewriting: built, measure (needs LLM quota)
+- [x] fix #2 query rewriting: +0.01 Hit@5 overall (helps hand-written only) → opt-in `--rewrite`
+- [x] `rag ask` defaults from n=94: hybrid + rerank + max 1/page
 - [x] `rag eval [--config]` → `evals/results/<ts>.json` + Markdown table (first results in README)
 - [ ] fixes to measure: query rewriting, max chunks per page
 - [ ] CI subset gate (fail on >5pt recall drop)

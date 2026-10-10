@@ -2,6 +2,25 @@
 
 Newest first. Each entry: context, decision, consequences. Revisit when evals say otherwise.
 
+## 2026-10-11: `rag ask` defaults from the 94-question evaluation
+- **Context**: v2 golden set (25 human + 69 reviewed LLM drafts), all 10 configs, results split
+  by question origin.
+- **Decision**: default = hybrid + rerank + `max_per_source=1`, generated pages included.
+  Query rewriting is opt-in (`--rewrite`).
+- **Consequence**: Hit@5 0.915 / MRR 0.749 overall. Rewriting would add +0.01 overall
+  (+0.08 on hand-written, −0.02 on LLM-drafted questions) for one LLM call per query: not worth
+  it by default. The 25-question estimate for rewriting (0.96) was inflated by question style,
+  which is the lesson behind always reporting results by origin.
+
+## 2026-10-11: Golden set v2 reviewed by Claude, spot-checked by the owner
+- **Context**: 97 LLM drafts needed review; the owner asked Claude to do it.
+- **Decision**: Claude reviewed each draft against its source passage text (not memory), tagged
+  accepted rows `reviewer:claude`, logged every reason in `evals/drafts-review-notes.jsonl`;
+  the owner spot-checks a sample. Query-parameter questions on generated API pages were
+  rejected because ~160 pages share identical text (ambiguous relevance).
+- **Consequence**: 94 questions, reviewer recorded per row, so results can be re-split by
+  reviewer if the spot-check finds problems.
+
 ## 2026-10-10: Cap chunks per page; rewrite queries for search only
 - **Context**: failure analysis showed one page filling the top 5; user wording differs from
   doc wording.

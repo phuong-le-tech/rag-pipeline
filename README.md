@@ -69,18 +69,20 @@ data/                raw corpus (gitignored)
 
 ## Results
 
-Retrieval on 25 hand-written questions (corpus `b2e60d8`, local `bge-small-en-v1.5`, reranker
-`ms-marco-MiniLM-L-6-v2`, 2026-10-10). Full method and caveats in
-[docs/06-evaluation.md](docs/06-evaluation.md).
+Retrieval on 94 reviewed questions (25 hand-written, 69 LLM-drafted; corpus `b2e60d8`, local
+`bge-small-en-v1.5`, reranker `ms-marco-MiniLM-L-6-v2`, 2026-10-10). Method, per-group results
+and caveats in [docs/06-evaluation.md](docs/06-evaluation.md).
 
 | Config | Hit@1 | Hit@5 | Recall@5 | MRR | nDCG@10 | p50 ms |
 |---|---:|---:|---:|---:|---:|---:|
-| dense | 0.520 | 0.600 | 0.467 | 0.576 | 0.502 | 8 |
-| keyword | 0.320 | 0.480 | 0.313 | 0.380 | 0.323 | 30 |
-| hybrid | 0.480 | 0.640 | 0.460 | 0.547 | 0.483 | 35 |
-| **hybrid+rerank** | 0.480 | **0.800** | **0.547** | **0.613** | **0.548** | 1281 |
-| hybrid, no generated | 0.520 | 0.680 | 0.547 | 0.562 | 0.519 | 27 |
-| hybrid+rerank, no generated | 0.520 | 0.760 | 0.547 | 0.603 | 0.530 | 1309 |
+| dense | 0.543 | 0.766 | 0.725 | 0.647 | 0.662 | 9 |
+| keyword | 0.234 | 0.500 | 0.456 | 0.358 | 0.396 | 44 |
+| hybrid | 0.511 | 0.766 | 0.697 | 0.609 | 0.620 | 58 |
+| hybrid+rerank | 0.628 | 0.894 | 0.821 | 0.742 | 0.748 | 1448 |
+| **hybrid+rerank, max 1 chunk/page** (default) | 0.628 | **0.915** | 0.851 | 0.749 | 0.763 | 1314 |
+| hybrid+rerank, LLM query rewrite, max 1/page | 0.638 | 0.926 | 0.862 | 0.762 | 0.786 | 1422 |
 
-With 25 questions one question = 0.04, so only large gaps are conclusive: dense ≫ keyword, and
-reranking lifts Hit@5 from 0.64 to 0.80. The golden set is being extended to ~100 questions.
+Key findings: reranking is the robust win (+0.13 Hit@5); capping one chunk per page is a free
+gain; LLM-drafted eval questions score ~0.15 higher than hand-written ones, so results are
+always reported by question origin; query rewriting helps hand-written questions but not
+others, so it is opt-in (`rag ask --rewrite`).

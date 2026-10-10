@@ -72,16 +72,34 @@ def _database_unreachable(exc: Exception) -> typer.Exit:
     return typer.Exit(1)
 
 
+def ask_config(k: int, rerank: bool, generated: bool, rewrite: bool) -> RetrieverConfig:
+    """Defaults for `rag ask`, chosen from the n=94 evaluation (docs/06-evaluation.md):
+    hybrid + rerank + at most one chunk per page. Rewriting stays opt-in: it helped
+    hand-written questions but not others, and costs an LLM call per query."""
+    return RetrieverConfig(
+        mode="hybrid",
+        k=k,
+        candidates=max(50, k),
+        include_generated=generated,
+        rerank=rerank,
+        max_per_source=1,
+        rewrite=rewrite,
+    )
+
+
 @app.command("ask")
 def ask_cmd(
     question: Annotated[str, typer.Argument(help="Question about Kubernetes.")],
     k: Annotated[int, typer.Option("-k", help="Passages sent to the LLM.")] = 5,
     rerank: Annotated[bool, typer.Option(help="Rerank candidates before answering.")] = True,
     generated: Annotated[bool, typer.Option(help="Include auto-generated reference pages.")] = True,
+    rewrite: Annotated[
+        bool, typer.Option(help="LLM rewrites the question for search (one extra LLM call).")
+    ] = False,
 ) -> None:
     """Answer a question from the docs, with [n] citations to the passages used."""
     settings = Settings()
-    config = RetrieverConfig(k=k, candidates=max(50, k), include_generated=generated, rerank=rerank)
+    config = ask_config(k=k, rerank=rerank, generated=generated, rewrite=rewrite)
     try:
         conn = connect(settings)
     except psycopg.OperationalError as exc:
@@ -90,7 +108,8 @@ def ask_cmd(
     with conn:
         register_vector(conn)
         reranker = make_reranker(settings) if rerank else None
-        retriever = Retriever(conn, make_embedder(settings), reranker)
+        rewriter = QueryRewriter(make_generator(settings)) if rewrite else None
+        retriever = Retriever(conn, make_embedder(settings), reranker, rewriter)
         try:
             result = answer_question(
                 question,

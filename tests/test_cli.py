@@ -392,6 +392,16 @@ def test_eval_rejects_unknown_config_name(tmp_path):
     assert "magic" in result.output
 
 
+def test_ask_config_uses_measured_defaults():
+    config = cli.ask_config(k=5, rerank=True, generated=True, rewrite=False)
+
+    assert config.mode == "hybrid"
+    assert config.rerank is True
+    assert config.max_per_source == 1  # +0.02 Hit@5 overall, +0.08 on hand-written (n=94)
+    assert config.rewrite is False  # mixed evidence + one LLM call per query
+    assert config.include_generated is True
+
+
 def test_search_rejects_unknown_mode(monkeypatch):
     monkeypatch.setenv("RAG_EMBEDDING_BACKEND", "fake")
 
