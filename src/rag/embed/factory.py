@@ -10,7 +10,9 @@ def make_embedder(settings: Settings) -> Embedder:
     match settings.embedding_backend:
         case "local":
             return LocalEmbedder(
-                dim=settings.embedding_dim, model_name=settings.local_embedding_model
+                dim=settings.embedding_dim,
+                model_name=settings.local_embedding_model,
+                threads=settings.embedding_threads,
             )
         case "openai":
             return OpenAIEmbedder(dim=settings.embedding_dim, model=settings.openai_embedding_model)

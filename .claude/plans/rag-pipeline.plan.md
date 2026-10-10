@@ -33,9 +33,10 @@ ablation table is the centrepiece of the README.
 - [x] `ingest/loaders.py`: frontmatter, shortcodes, HTML→text, `generated` flag → `Document`
 - [x] Corpus profiled: 1,652 docs, 17,863 chunks; generated = 55% of chunks (kept, tagged)
 - [x] `embed/`: `Embedder` protocol (`embed` + `embed_query`); `LocalEmbedder` (default), `OpenAIEmbedder`, `FakeEmbedder`, `make_embedder`
-- [ ] `ingest/pipeline.py`: incremental by `content_hash`, delete vanished docs, one transaction per doc
-- [ ] CLI `rag ingest <path>`: added/updated/skipped/deleted counts
-- [ ] Integration tests (`@pytest.mark.integration`) against compose DB
+- [x] `ingest/pipeline.py`: incremental by `content_hash` + pipeline fingerprint, prune, one transaction per doc
+- [x] CLI `rag ingest <path>`: added/updated/skipped/deleted counts, progress bar
+- [x] Integration tests (`@pytest.mark.integration`) against throwaway `rag_test` DB
+- [ ] First full ingest of the corpus (running)
 
 ### Phase 2 — Retrieval (M)
 - [ ] dense (cosine), keyword (`websearch_to_tsquery` + `ts_rank_cd`)

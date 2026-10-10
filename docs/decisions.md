@@ -2,6 +2,19 @@
 
 Newest first. Each entry: context, decision, consequences. Revisit when evals say otherwise.
 
+## 2026-10-10: Incremental ingestion keyed on content hash + pipeline fingerprint
+- **Context**: re-embedding the whole corpus takes 35–60 min on CPU; upstream changes few pages.
+- **Decision**: skip a document when `(content_hash, backend:model:dim:max_chars)` matches the
+  stored pair; otherwise re-chunk, re-embed and swap its chunks in one transaction. Prune
+  documents missing from disk. Embed `heading path + content` (contextual chunk headers).
+- **Consequence**: re-runs take seconds; changing model or chunk size safely re-embeds
+  everything; no mixed-model vectors. Pruning means `rag ingest` must get the corpus root.
+
+## 2026-10-10: Cap ONNX threads (`RAG_EMBEDDING_THREADS`)
+- **Context**: default threading oversubscribed the CPU (load average 46 on 10 cores).
+- **Decision**: expose a thread cap; 6 measured fastest on the dev machine (121 vs 204 ms/chunk).
+- **Consequence**: one more setting; the best value depends on the machine and its load.
+
 ## 2026-10-10: Local embeddings by default (bge-small via fastembed)
 - **Context**: no OpenAI key; Anthropic offers no embeddings endpoint.
 - **Decision**: default `RAG_EMBEDDING_BACKEND=local` with `BAAI/bge-small-en-v1.5` (384d) on

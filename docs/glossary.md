@@ -12,6 +12,9 @@ normalisation. Postgres full-text ranking is BM25-like.
 
 **Chunk**: a passage of a document; the unit that is embedded, retrieved and cited.
 
+**Contextual chunk header**: prepending the document title / heading path to a chunk before
+embedding it, so the vector carries where the passage comes from.
+
 **Cosine similarity**: angle-based similarity between two vectors, from -1 to 1. Ignores
 vector length.
 
@@ -27,6 +30,9 @@ the top-k only.
 
 **ONNX**: portable format for neural network models; ONNX Runtime runs them fast on CPU
 without installing PyTorch. fastembed uses it.
+
+**Incremental ingestion**: re-indexing only documents whose content (or processing
+configuration) changed, detected via hashes, instead of rebuilding the whole index.
 
 **Golden set**: hand-checked questions with known relevant sources and reference answers, used
 to measure the system.

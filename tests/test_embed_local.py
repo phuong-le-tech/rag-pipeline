@@ -76,6 +76,12 @@ def test_make_embedder_picks_backend(backend, cls):
     assert emb.dim == 384
 
 
+def test_make_embedder_passes_thread_cap_to_local_model():
+    emb = make_embedder(Settings(embedding_backend="local", embedding_threads=6))
+
+    assert emb.threads == 6
+
+
 def test_settings_default_to_local_bge_small():
     settings = Settings(_env_file=None)
 

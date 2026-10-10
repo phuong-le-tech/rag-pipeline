@@ -1,17 +1,28 @@
+import time
 from pathlib import Path
 from typing import Annotated
 
 import psycopg
 import typer
+from pgvector.psycopg import register_vector
 
 from rag.config import Settings
-from rag.db import init_db
+from rag.db import connect, init_db
+from rag.embed import make_embedder
 from rag.ingest.chunking import chunk_markdown
+from rag.ingest.loaders import iter_documents
+from rag.ingest.pipeline import ingest
 
 app = typer.Typer(help="RAG pipeline commands.", no_args_is_help=True)
 
 SUPPORTED_SUFFIXES = {".md", ".markdown", ".txt"}
 PREVIEW_CHARS = 120
+
+
+def _database_unreachable(exc: Exception) -> typer.Exit:
+    typer.secho(f"Cannot reach database: {exc}", fg="red", err=True)
+    typer.echo("Is it running? Try: docker compose up -d", err=True)
+    return typer.Exit(1)
 
 
 @app.command("init-db")
@@ -20,10 +31,55 @@ def init_db_cmd() -> None:
     try:
         init_db(Settings())
     except psycopg.OperationalError as exc:
-        typer.secho(f"Cannot reach database: {exc}", fg="red", err=True)
-        typer.echo("Is it running? Try: docker compose up -d", err=True)
-        raise typer.Exit(1) from exc
+        raise _database_unreachable(exc) from exc
     typer.secho("Schema ready.", fg="green")
+
+
+@app.command("ingest")
+def ingest_cmd(
+    path: Annotated[
+        Path, typer.Argument(exists=True, file_okay=False, help="Corpus root, e.g. data/k8s-docs.")
+    ],
+    prune: Annotated[
+        bool, typer.Option(help="Delete indexed documents no longer under PATH.")
+    ] = True,
+) -> None:
+    """Load, chunk, embed and store documents. Unchanged documents are skipped.
+
+    Always point PATH at the corpus root: sources are stored relative to it, and --prune
+    removes everything not found under it.
+    """
+    settings = Settings()
+    docs = list(iter_documents(path))
+    if not docs:
+        typer.secho(f"No documents found under {path}", fg="yellow")
+        raise typer.Exit(1)
+
+    try:
+        conn = connect(settings)
+    except psycopg.OperationalError as exc:
+        raise _database_unreachable(exc) from exc
+
+    fingerprint = settings.pipeline_fingerprint()
+    typer.echo(f"{len(docs)} documents, pipeline {fingerprint}")
+    started = time.perf_counter()
+    with conn, typer.progressbar(length=len(docs), label="Ingesting") as bar:
+        register_vector(conn)
+        stats = ingest(
+            conn,
+            docs,
+            make_embedder(settings),
+            settings.chunk_max_chars,
+            fingerprint,
+            prune=prune,
+            on_progress=lambda _i: bar.update(1),
+        )
+    elapsed = time.perf_counter() - started
+    typer.secho(
+        f"added {stats.added}, updated {stats.updated}, skipped {stats.skipped}, "
+        f"deleted {stats.deleted} ({stats.chunks} chunks) in {elapsed:.1f}s",
+        fg="green",
+    )
 
 
 @app.command("chunk")

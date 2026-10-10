@@ -25,6 +25,8 @@ docker compose up -d                      # Postgres 17 + pgvector on localhost:
 uv run rag init-db                        # schema (idempotent)
 scripts/fetch_corpus.sh [ref]             # k8s docs -> data/k8s-docs (+ CORPUS_REF sha)
 uv run rag chunk data/k8s-docs --preview  # inspect cleaning + chunking, no DB
+RAG_EMBEDDING_THREADS=6 uv run rag ingest data/k8s-docs   # incremental; ALWAYS the corpus root
+                                          # (first full run ~35-60 min on CPU, re-runs seconds)
 uv run ruff format . && uv run ruff check .
 uv run pytest -m "not integration" --cov=rag   # unit tests
 uv run pytest -m integration                   # needs compose DB
@@ -39,7 +41,11 @@ uv run pytest -m integration                   # needs compose DB
   never mix them), `make_embedder(settings)` picks `RAG_EMBEDDING_BACKEND`: `local` default
   (`LocalEmbedder`, bge-small via fastembed, 384d, no key), `openai` (needs `OPENAI_API_KEY`,
   set dim 1536), `fake` (tests only). No Anthropic embeddings exist.
-- `src/rag/cli.py`: typer app, entry point `rag`
+- `src/rag/ingest/pipeline.py`: incremental ingest; skip when `(content_hash, fingerprint)`
+  matches; one transaction per doc; prunes docs missing from disk
+- `src/rag/cli.py`: typer app, entry point `rag` (`init-db`, `chunk`, `ingest`)
+- Integration tests use a separate `rag_test` DB created by `tests/conftest.py` (dim 8);
+  they never touch the real index and skip if Postgres is down
 - Planned: `retrieval/`, `generate/`, `evals/` (see plan)
 
 ## Conventions

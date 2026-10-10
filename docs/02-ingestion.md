@@ -119,6 +119,44 @@ Each chunk is `Chunk(ord, heading, content)`. The heading path is stored in its 
 weighted higher in keyword search (chapter 3), so a query like "rolling back" matches the
 section title even if the body says "undo".
 
+### Pipeline: [`src/rag/ingest/pipeline.py`](../src/rag/ingest/pipeline.py)
+
+`rag ingest data/k8s-docs` ties it together: load → chunk → embed → store. The interesting
+part is making it **incremental**: re-running it should only redo what changed.
+
+```
+for each document:
+    stored = (content_hash, pipeline fingerprint) in the DB
+    same?        → skip (no embedding, no write)
+    different?   → chunk, embed, then in ONE transaction:
+                   upsert document row, delete its old chunks, insert new chunks
+documents in the DB but no longer on disk → deleted (chunks go with them, ON DELETE CASCADE)
+```
+
+Three ideas worth knowing:
+
+1. **Content hash.** A sha256 of the raw file. Same hash means same content, so there is no
+   need to re-embed. Upstream docs change a few pages per week; re-embedding 17,000 chunks for
+   that would be wasteful.
+2. **Pipeline fingerprint**: `backend:model:dim:max_chars`, e.g.
+   `local:BAAI/bge-small-en-v1.5:384:1500`. The hash alone isn't enough: if you change the
+   chunk size or the embedding model, the *text* is unchanged but every stored vector is now
+   wrong. Mixing vectors from two models in one index silently breaks search, since their
+   coordinates mean different things. The fingerprint is stored in `documents.metadata`, and
+   any change forces re-ingestion.
+3. **One transaction per document.** Embedding happens *before* the transaction opens, so a
+   model crash leaves the previous version untouched. Inside the transaction, the old chunks
+   are deleted and the new ones inserted atomically: a search never sees a half-updated page.
+
+**What gets embedded** is `heading path + "\n\n" + content`, not the bare content. A chunk
+that just says "Run `kubectl rollout undo`." becomes
+"Deployments > Rolling back a Deployment\n\nRun `kubectl rollout undo`.", so its vector knows
+which page and section it belongs to. This trick is often called *contextual chunk headers*.
+
+**Prune with care:** sources are stored relative to the folder you pass, and documents not
+found under it are deleted. Always pass the corpus root, never a subfolder (or use
+`--no-prune`).
+
 ## Trade-offs
 
 - Heading split assumes well-structured Markdown. True for k8s docs, false for scanned PDFs.

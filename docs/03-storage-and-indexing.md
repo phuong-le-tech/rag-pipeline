@@ -38,15 +38,15 @@ Every embedding backend implements one small interface (a `Protocol`):
 class Embedder(Protocol):
     dim: int
 
-    def embed(self, texts: Sequence[str]) -> list[list[float]]: ...   # passages
-    def embed_query(self, text: str) -> list[float]: ...              # search queries
+    def embed(self, texts: Sequence[str]) -> list[list[float]]: ...  # passages
+    def embed_query(self, text: str) -> list[float]: ...  # search queries
 ```
 
 Pick one with `RAG_EMBEDDING_BACKEND` (`make_embedder` in `embed/factory.py`):
 
 | Backend | Implementation | Notes |
 |---|---|---|
-| `local` (default) | `LocalEmbedder`: `BAAI/bge-small-en-v1.5` via fastembed | runs on your machine (ONNX, no torch, no key), 384 dims, 67 MB weights downloaded once, ~5 min for the whole corpus on a laptop CPU |
+| `local` (default) | `LocalEmbedder`: `BAAI/bge-small-en-v1.5` via fastembed | runs on your machine (ONNX, no torch, no key), 384 dims, 67 MB weights downloaded once, ~35–60 min for the first full ingest on a laptop CPU (see the lesson below) |
 | `openai` | `OpenAIEmbedder`: `text-embedding-3-small` | needs `OPENAI_API_KEY`; batches of 128 per call, results re-sorted by `index`, ~$0.07 for the corpus. Set `RAG_EMBEDDING_DIM=1536` |
 | `fake` | `FakeEmbedder` | tests only: unit vectors seeded by a hash of the text, no network, no cost |
 
@@ -85,6 +85,25 @@ eval harness measures, with the real model.
 Why batch? Models are much faster on many texts at once than one at a time: the local model
 processes 64 chunks per pass, and the OpenAI backend sends 128 per HTTP call (~140 calls instead
 of ~18,000).
+
+### Lesson: benchmark with realistic inputs
+
+The first speed test used short repeated text (~650 chars) and predicted **5 minutes** for the
+corpus. The real run crawled: real chunks are up to 1,500 chars (~350 tokens), and transformer
+cost grows faster than linearly with length because every token attends to every other token.
+Measured on real-length chunks (Apple M4, 10 cores, with other apps busy):
+
+| ONNX threads | ms per chunk | Full corpus (17,863 chunks) |
+|---|---|---|
+| default (all cores) | 204 | ~61 min |
+| 4 | 297 | ~88 min |
+| 6 | 121 | ~36 min |
+
+Two takeaways. **Benchmark with inputs shaped like production**, or the estimate is fiction.
+And **more threads isn't always faster**: ONNX Runtime and the tokenizer each start thread
+pools, and with other apps busy the machine hit a load average of 46 on 10 cores (threads
+fighting for CPU). `RAG_EMBEDDING_THREADS=6` caps it. The first full ingest is a one-time cost;
+incremental re-runs only embed changed pages.
 
 ## In this repo: [`src/rag/schema.sql`](../src/rag/schema.sql)
 

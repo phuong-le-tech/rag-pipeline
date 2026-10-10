@@ -18,6 +18,7 @@ class LocalEmbedder:
         dim: int,
         model_name: str = DEFAULT_MODEL,
         batch_size: int = DEFAULT_BATCH_SIZE,
+        threads: int | None = None,
         model: Any = None,
     ) -> None:
         if dim <= 0 or batch_size <= 0:
@@ -25,6 +26,7 @@ class LocalEmbedder:
         self.dim = dim
         self.model_name = model_name
         self.batch_size = batch_size
+        self.threads = threads
         self._model = model
 
     @property
@@ -32,7 +34,7 @@ class LocalEmbedder:
         if self._model is None:
             from fastembed import TextEmbedding
 
-            self._model = TextEmbedding(model_name=self.model_name)
+            self._model = TextEmbedding(model_name=self.model_name, threads=self.threads)
         return self._model
 
     def _to_list(self, vector: Any) -> list[float]:
