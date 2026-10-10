@@ -2,6 +2,15 @@
 
 Newest first. Each entry: context, decision, consequences. Revisit when evals say otherwise.
 
+## 2026-10-10: Local embeddings by default (bge-small via fastembed)
+- **Context**: no OpenAI key; Anthropic offers no embeddings endpoint.
+- **Decision**: default `RAG_EMBEDDING_BACKEND=local` with `BAAI/bge-small-en-v1.5` (384d) on
+  fastembed/ONNX (no torch). Keep `OpenAIEmbedder` as an alternative backend.
+- **Consequence**: free, private, reproducible, ~5 min to embed the corpus on CPU. Smaller
+  model may cost some accuracy, so Phase 4 measures local vs. OpenAI. Switching backend means
+  changing `RAG_EMBEDDING_DIM` and re-embedding everything. The interface gained `embed_query`
+  because bge encodes queries and passages differently.
+
 ## 2026-10-10: Keep generated reference pages, tag them, measure
 - **Context**: profiling showed generated reference (CLI flags, kubectl/kubeadm generated, API
   definitions) is 25% of documents but 55% of chunks, mostly HTML tables.

@@ -3,6 +3,10 @@
 **ANN (approximate nearest neighbour)**: vector search that skips exhaustive comparison for
 speed, at a small recall cost. See HNSW.
 
+**Asymmetric embedding model**: a model that encodes queries and passages differently (often
+with an instruction prefix for queries) because they look different. bge and e5 are
+asymmetric; OpenAI's embedding models are symmetric.
+
 **BM25**: classic keyword ranking formula: term frequency, inverse document frequency, length
 normalisation. Postgres full-text ranking is BM25-like.
 
@@ -20,6 +24,9 @@ the top-k only.
 **Embedding**: fixed-length vector representing text meaning.
 
 **Faithfulness**: whether every claim in an answer is supported by the retrieved context.
+
+**ONNX**: portable format for neural network models; ONNX Runtime runs them fast on CPU
+without installing PyTorch. fastembed uses it.
 
 **Golden set**: hand-checked questions with known relevant sources and reference answers, used
 to measure the system.

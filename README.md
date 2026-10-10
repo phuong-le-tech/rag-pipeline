@@ -27,11 +27,12 @@ Configuration comes from environment variables (or a local `.env`), prefix `RAG_
 | Variable | Default |
 |---|---|
 | `RAG_DATABASE_URL` | `postgresql://rag:rag@localhost:5433/rag` |
-| `RAG_EMBEDDING_DIM` | `1536` |
+| `RAG_EMBEDDING_BACKEND` | `local` (`openai`, `fake`) |
+| `RAG_EMBEDDING_DIM` | `384` (1536 for OpenAI) |
 | `RAG_CHUNK_MAX_CHARS` | `1500` |
 
-Provider keys (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`) are read from the environment once
-embedding and generation land. Never commit `.env`.
+Embeddings run locally by default (no key). `ANTHROPIC_API_KEY` is needed for generation
+(Phase 3); `OPENAI_API_KEY` only if you switch `RAG_EMBEDDING_BACKEND=openai`. Never commit `.env`.
 
 ## Architecture
 

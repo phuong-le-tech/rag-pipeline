@@ -11,7 +11,7 @@ ablation table is the centrepiece of the README.
 | Decision | Choice |
 |---|---|
 | Corpus | `kubernetes/website` `content/en/docs`, pinned release tag, CC BY 4.0 |
-| Embeddings | OpenAI `text-embedding-3-small` (1536d); local `bge-m3` later as ablation row |
+| Embeddings | Local `BAAI/bge-small-en-v1.5` (384d, fastembed); OpenAI `text-embedding-3-small` kept as ablation row
 | Reranker | Local `bge-reranker-v2-m3` (sentence-transformers), Cohere-swappable |
 | LLM | Claude via Anthropic SDK behind a `Generator` protocol |
 | UI | FastAPI + small Next.js page |
@@ -32,7 +32,7 @@ ablation table is the centrepiece of the README.
 - [x] `scripts/fetch_corpus.sh`: sparse clone into `data/`, SHA recorded in `CORPUS_REF`
 - [x] `ingest/loaders.py`: frontmatter, shortcodes, HTML→text, `generated` flag → `Document`
 - [x] Corpus profiled: 1,652 docs, 17,863 chunks; generated = 55% of chunks (kept, tagged)
-- [x] `embed/`: `Embedder` protocol; `OpenAIEmbedder` (batch, retry), `FakeEmbedder` (tests)
+- [x] `embed/`: `Embedder` protocol (`embed` + `embed_query`); `LocalEmbedder` (default), `OpenAIEmbedder`, `FakeEmbedder`, `make_embedder`
 - [ ] `ingest/pipeline.py`: incremental by `content_hash`, delete vanished docs, one transaction per doc
 - [ ] CLI `rag ingest <path>`: added/updated/skipped/deleted counts
 - [ ] Integration tests (`@pytest.mark.integration`) against compose DB

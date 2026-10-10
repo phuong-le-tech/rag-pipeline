@@ -54,3 +54,7 @@ class OpenAIEmbedder:
             for start in range(0, len(texts), self.batch_size)
             for vector in self._embed_batch(texts[start : start + self.batch_size])
         ]
+
+    def embed_query(self, text: str) -> list[float]:
+        # OpenAI embeddings are symmetric: queries and passages share one encoding.
+        return self.embed([text])[0]

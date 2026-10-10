@@ -35,8 +35,10 @@ uv run pytest -m integration                   # needs compose DB
 - `src/rag/db.py` + `schema.sql`: raw psycopg; `{embedding_dim}` templated, literal braces doubled `{{}}`
 - `src/rag/ingest/loaders.py`: Hugo Markdown → `Document` (frontmatter, shortcode cleanup, URL)
 - `src/rag/ingest/chunking.py`: heading-aware chunker → `Chunk(ord, heading, content)`
-- `src/rag/embed/`: `Embedder` protocol, `OpenAIEmbedder` (batched, needs `OPENAI_API_KEY`),
-  `FakeEmbedder` (deterministic, tests only)
+- `src/rag/embed/`: `Embedder` protocol (`embed` for passages, `embed_query` for queries —
+  never mix them), `make_embedder(settings)` picks `RAG_EMBEDDING_BACKEND`: `local` default
+  (`LocalEmbedder`, bge-small via fastembed, 384d, no key), `openai` (needs `OPENAI_API_KEY`,
+  set dim 1536), `fake` (tests only). No Anthropic embeddings exist.
 - `src/rag/cli.py`: typer app, entry point `rag`
 - Planned: `retrieval/`, `generate/`, `evals/` (see plan)
 
