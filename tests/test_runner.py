@@ -3,7 +3,13 @@ import json
 import pytest
 
 from rag.evals.golden import GoldenItem
-from rag.evals.runner import ABLATIONS, evaluate, to_markdown, write_results
+from rag.evals.runner import (
+    ABLATIONS,
+    breakdown_markdown,
+    evaluate,
+    to_markdown,
+    write_results,
+)
 from rag.retrieval.retriever import RetrieverConfig
 from rag.retrieval.search import Hit
 
@@ -83,6 +89,17 @@ def test_write_results_saves_json_with_meta_and_per_question_rankings(tmp_path):
     assert saved["summary"]["mrr"] == pytest.approx(0.75)
     assert saved["results"][1]["ranked_sources"] == ["x.md", "b.md"]
     assert (tmp_path / "2026-10-10T18-30-00Z.md").read_text().startswith("| Config |")
+
+
+def test_breakdown_markdown_splits_metrics_by_group():
+    retriever = ScriptedRetriever({"first?": ["a.md"], "second?": ["x.md", "b.md"]})
+    report = evaluate(retriever, ITEMS, RetrieverConfig(mode="dense"), name="dense")
+
+    table = breakdown_markdown([report], ITEMS, group=lambda item: item.origin)
+
+    lines = table.strip().splitlines()
+    assert lines[0] == "| Config | human Hit@5 | human MRR | llm Hit@5 | llm MRR |"
+    assert lines[2] == "| dense | 1.000 | 1.000 | 1.000 | 0.500 |"
 
 
 def test_to_markdown_renders_one_row_per_config():

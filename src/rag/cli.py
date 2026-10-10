@@ -23,7 +23,13 @@ from rag.evals.drafting import draft_items, sample_chunks
 from rag.evals.golden import load_golden, unknown_sources
 from rag.evals.judge import load_unanswerable
 from rag.evals.review import pending_drafts, record_decision
-from rag.evals.runner import ABLATIONS, evaluate, to_markdown, write_results
+from rag.evals.runner import (
+    ABLATIONS,
+    breakdown_markdown,
+    evaluate,
+    to_markdown,
+    write_results,
+)
 from rag.generate.answer import answer_question
 from rag.generate.generator import make_generator
 from rag.ingest.chunking import chunk_markdown
@@ -169,6 +175,8 @@ def eval_cmd(
         "golden": str(golden),
     }
     typer.echo(to_markdown(reports))
+    typer.echo("By question origin (human-written vs LLM-drafted):")
+    typer.echo(breakdown_markdown(reports, items, group=lambda item: item.origin))
     path = write_results(out, reports, meta)
     typer.secho(f"Saved {path}", fg="green")
 

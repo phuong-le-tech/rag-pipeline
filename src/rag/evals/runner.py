@@ -7,7 +7,7 @@ retrieval decision in the docs is backed by a measured difference, not an anecdo
 import json
 import math
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Protocol
@@ -145,3 +145,24 @@ def to_markdown(reports: Sequence[EvalReport]) -> str:
         for r in reports
     ]
     return "\n".join([header, divider, *rows]) + "\n"
+
+
+def breakdown_markdown(
+    reports: Sequence[EvalReport],
+    items: Sequence[GoldenItem],
+    group: Callable[[GoldenItem], str],
+    metrics: Sequence[tuple[str, str]] = (("Hit@5", "hit@5"), ("MRR", "mrr")),
+) -> str:
+    """Per-group metrics (e.g. human- vs LLM-written questions) so one subset can't hide another."""
+    group_of = {item.id: group(item) for item in items}
+    groups = sorted(set(group_of.values()))
+    header = "| Config | " + " | ".join(f"{g} {label}" for g in groups for label, _ in metrics)
+    rows = []
+    for report in reports:
+        cells = []
+        for g in groups:
+            members = [r for r in report.results if group_of.get(r.id) == g]
+            cells += [f"{mean(r.metrics[key] for r in members):.3f}" for _, key in metrics]
+        rows.append(f"| {report.name} | " + " | ".join(cells) + " |")
+    divider = "|---|" + "---:|" * (len(groups) * len(metrics))
+    return "\n".join([header + " |", divider, *rows]) + "\n"
