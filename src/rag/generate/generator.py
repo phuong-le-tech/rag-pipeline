@@ -33,10 +33,16 @@ class ClaudeGenerator:
     """Anthropic Messages API. Reads ``ANTHROPIC_API_KEY`` from the environment by default."""
 
     def __init__(
-        self, model: str, max_tokens: int, api_key: str | None = None, client: Any = None
+        self,
+        model: str,
+        max_tokens: int,
+        api_key: str | None = None,
+        timeout: float | None = None,
+        client: Any = None,
     ) -> None:
         self.model = model
         self.max_tokens = max_tokens
+        self.timeout = timeout
         self._api_key = api_key
         self._client = client
 
@@ -46,7 +52,7 @@ class ClaudeGenerator:
             from anthropic import Anthropic
 
             # api_key=None falls back to the ANTHROPIC_API_KEY environment variable.
-            self._client = Anthropic(api_key=self._api_key)
+            self._client = Anthropic(api_key=self._api_key, timeout=self.timeout)
         return self._client
 
     def _request(self, system: str, user: str) -> dict[str, Any]:
@@ -78,10 +84,12 @@ class OpenAICompatibleGenerator:
         max_tokens: int,
         base_url: str | None = None,
         api_key: str | None = None,
+        timeout: float | None = None,
         client: Any = None,
     ) -> None:
         self.model = model
         self.max_tokens = max_tokens
+        self.timeout = timeout
         self.base_url = base_url
         self._api_key = api_key
         self._client = client
@@ -91,7 +99,9 @@ class OpenAICompatibleGenerator:
         if self._client is None:
             from openai import OpenAI
 
-            self._client = OpenAI(base_url=self.base_url, api_key=self._api_key)
+            self._client = OpenAI(
+                base_url=self.base_url, api_key=self._api_key, timeout=self.timeout
+            )
         return self._client
 
     def _request(self, system: str, user: str) -> dict[str, Any]:
@@ -129,9 +139,11 @@ def make_generator(settings: Settings) -> Generator:
                 max_tokens=settings.llm_max_tokens,
                 base_url=settings.openrouter_base_url,
                 api_key=_secret(settings.openrouter_api_key),
+                timeout=settings.llm_timeout_s,
             )
     return ClaudeGenerator(
         model=settings.llm_model,
         max_tokens=settings.llm_max_tokens,
         api_key=_secret(settings.anthropic_api_key),
+        timeout=settings.llm_timeout_s,
     )

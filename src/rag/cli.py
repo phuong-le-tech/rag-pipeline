@@ -241,19 +241,40 @@ def draft_questions_cmd(
         raise _database_unreachable(exc) from exc
     with conn:
         samples = sample_chunks(conn, n=n, seed=seed)
-    typer.echo(f"Drafting from {len(samples)} chunks with {settings.llm_backend}...", err=True)
-    rows = draft_items(
-        samples,
-        make_generator(settings),
-        on_progress=lambda done, kept: typer.echo(
-            f"  {done}/{len(samples)} sampled, {kept} kept", err=True
-        ),
-    )
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+    done_rows = (
+        [json.loads(line) for line in out.read_text(encoding="utf-8").splitlines() if line]
+        if out.exists()
+        else []
+    )
+    if done_rows:
+        typer.echo(f"Resuming: {len(done_rows)} drafts already in {out}", err=True)
+    typer.echo(f"Drafting from {len(samples)} chunks with {settings.llm_backend}...", err=True)
+    with out.open("a", encoding="utf-8") as sink:
+
+        def save(row: dict) -> None:
+            sink.write(json.dumps(row) + "\n")
+            sink.flush()  # every draft survives a crash or Ctrl-C
+
+        try:
+            draft_items(
+                samples,
+                make_generator(settings),
+                skip_ids={row["id"] for row in done_rows},
+                on_row=save,
+                on_progress=lambda done, kept: typer.echo(
+                    f"  {done}/{len(samples)} sampled, {kept} new", err=True
+                ),
+            )
+        except (anthropic.AnthropicError, openai.OpenAIError) as exc:
+            typer.secho(f"LLM call failed: {exc}", fg="red", err=True)
+            typer.echo(llm_error_hint(exc, settings) + " Re-run to resume.", err=True)
+            raise typer.Exit(1) from exc
+
+    rows = [json.loads(line) for line in out.read_text(encoding="utf-8").splitlines() if line]
     flagged = sum("high-overlap" in row["tags"] for row in rows)
     typer.secho(
-        f"{len(rows)} drafts written to {out} ({flagged} tagged high-overlap). "
+        f"{len(rows)} drafts in {out} ({flagged} tagged high-overlap). "
         "Review them before merging into the golden set.",
         fg="green",
     )

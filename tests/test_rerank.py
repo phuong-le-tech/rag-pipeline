@@ -73,6 +73,26 @@ class KeywordOnlyRetriever(Retriever):
         return [self._candidates[: config.candidates]]
 
 
+def test_retriever_caps_chunks_per_source_after_reranking():
+    same_page = [Hit(i, 0.0, "one.md", "u", "T", "H", "rollback", False) for i in range(1, 4)]
+    other = [hit(10, "rollback too")]
+    retriever = KeywordOnlyRetriever(
+        same_page + other, CrossEncoderReranker(model=StubCrossEncoder())
+    )
+
+    hits = retriever.retrieve(
+        "rollback",
+        RetrieverConfig(mode="keyword", k=2, candidates=10, rerank=True, max_per_source=1),
+    )
+
+    assert [h.source for h in hits] == ["one.md", "s10.md"]
+
+
+def test_config_rejects_bad_max_per_source():
+    with pytest.raises(ValueError):
+        RetrieverConfig(max_per_source=0)
+
+
 def test_retriever_reranks_all_candidates_then_truncates_to_k():
     candidates = [hit(i, "filler") for i in range(1, 10)] + [hit(10, "rollback answer")]
     retriever = KeywordOnlyRetriever(candidates, CrossEncoderReranker(model=StubCrossEncoder()))

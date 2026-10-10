@@ -136,6 +136,23 @@ def test_draft_items_builds_golden_rows_tags_overlap_and_skips():
     assert first["reference_answer"] == "No."
 
 
+def test_draft_items_streams_rows_and_resumes_by_skipping_done_ids():
+    gen = ScriptedGenerator(['{"question": "Second question here?", "answer": "A."}'])
+    streamed = []
+
+    rows = draft_items(
+        [sample(1), sample(2)],
+        gen,
+        sleep=lambda _s: None,
+        skip_ids={"llm-0001"},
+        on_row=streamed.append,
+    )
+
+    assert [r["id"] for r in rows] == ["llm-0002"]
+    assert streamed == rows
+    assert len(gen.calls) == 1  # the already-drafted sample cost no LLM call
+
+
 @pytest.mark.integration
 def test_sample_chunks_is_deterministic_one_per_page_with_generated_share(conn):
     from rag.embed import FakeEmbedder

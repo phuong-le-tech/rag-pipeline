@@ -142,10 +142,18 @@ def draft_items(
     generator: Generator,
     sleep: Callable[[float], None] = time.sleep,
     on_progress: Callable[[int, int], None] | None = None,
+    skip_ids: set[str] | frozenset[str] = frozenset(),
+    on_row: Callable[[dict], None] | None = None,
 ) -> list[dict]:
-    """One golden-format row per usable sample; skipped or unparseable drafts are dropped."""
+    """One golden-format row per usable sample; skipped or unparseable drafts are dropped.
+
+    ``on_row`` receives each row as soon as it exists (write it to disk there), and ``skip_ids``
+    lists ids already drafted, so an interrupted run resumes without repeating LLM calls.
+    """
     rows = []
     for position, sample in enumerate(samples, start=1):
+        if f"llm-{position:04d}" in skip_ids:
+            continue
         system, user = draft_prompt(sample)
         text = with_retry(lambda s=system, u=user: generator.generate(s, u), sleep=sleep)
         draft = parse_draft(text)
@@ -156,14 +164,15 @@ def draft_items(
         tags = ["llm-draft", sample.section or "root"]
         if lexical_overlap(draft.question, sample.content) >= HIGH_OVERLAP:
             tags.append("high-overlap")
-        rows.append(
-            {
-                "id": f"llm-{position:04d}",
-                "question": draft.question,
-                "relevant_sources": [sample.source],
-                "reference_answer": draft.answer,
-                "tags": tags,
-                "origin": "llm",
-            }
-        )
+        row = {
+            "id": f"llm-{position:04d}",
+            "question": draft.question,
+            "relevant_sources": [sample.source],
+            "reference_answer": draft.answer,
+            "tags": tags,
+            "origin": "llm",
+        }
+        rows.append(row)
+        if on_row is not None:
+            on_row(row)
     return rows

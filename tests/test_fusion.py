@@ -1,6 +1,6 @@
 import pytest
 
-from rag.retrieval.fusion import rrf
+from rag.retrieval.fusion import cap_per_source, rrf
 
 
 def test_item_ranked_high_in_both_lists_wins():
@@ -40,3 +40,27 @@ def test_duplicate_within_one_list_counts_once_at_best_rank():
 def test_rejects_non_positive_k():
     with pytest.raises(ValueError):
         rrf([[1]], k=0)
+
+
+def test_cap_per_source_keeps_order_and_fills_from_later_candidates():
+    ranked = ["a", "a", "a", "b", "a", "c", "b", "d"]
+
+    assert cap_per_source(ranked, key=lambda s: s, max_per_source=1, limit=4) == [
+        "a",
+        "b",
+        "c",
+        "d",
+    ]
+    assert cap_per_source(ranked, key=lambda s: s, max_per_source=2, limit=4) == [
+        "a",
+        "a",
+        "b",
+        "c",
+    ]
+
+
+def test_cap_per_source_none_only_truncates():
+    assert cap_per_source(["a", "a", "b"], key=lambda s: s, max_per_source=None, limit=2) == [
+        "a",
+        "a",
+    ]

@@ -10,7 +10,7 @@ from typing import Literal, get_args
 import psycopg
 
 from rag.embed import Embedder
-from rag.retrieval.fusion import DEFAULT_K, rrf
+from rag.retrieval.fusion import DEFAULT_K, cap_per_source, rrf
 from rag.retrieval.rerank import Reranker
 from rag.retrieval.search import Hit, dense_search, keyword_search
 
@@ -25,10 +25,13 @@ class RetrieverConfig:
     include_generated: bool = True
     rrf_k: int = DEFAULT_K
     rerank: bool = False  # cross-encoder re-scores all candidates, then keeps top k
+    max_per_source: int | None = None  # cap chunks per page in the final top k
 
     def __post_init__(self) -> None:
         if self.mode not in get_args(Mode):
             raise ValueError(f"mode must be one of {get_args(Mode)}, got {self.mode!r}")
+        if self.max_per_source is not None and self.max_per_source <= 0:
+            raise ValueError(f"max_per_source must be positive, got {self.max_per_source}")
         if self.k <= 0 or self.rrf_k <= 0:
             raise ValueError(f"k and rrf_k must be positive, got {self.k}, {self.rrf_k}")
         if self.candidates < self.k:
@@ -67,9 +70,11 @@ class Retriever:
     def retrieve(self, query: str, config: RetrieverConfig) -> list[Hit]:
         if not query.strip():
             raise ValueError("query must not be blank")
-        if not config.rerank:
-            return self._first_stage(query, config, config.k)
-        if self.reranker is None:
+        if config.rerank and self.reranker is None:
             raise ValueError("config.rerank is set but the Retriever has no reranker")
-        candidates = self._first_stage(query, config, config.candidates)
-        return self.reranker.rerank(query, candidates)[: config.k]
+        # Reranking and the per-page cap both need a deeper list than k to choose from.
+        deep = config.rerank or config.max_per_source is not None
+        hits = self._first_stage(query, config, config.candidates if deep else config.k)
+        if config.rerank:
+            hits = self.reranker.rerank(query, hits)
+        return cap_per_source(hits, lambda h: h.source, config.max_per_source, config.k)

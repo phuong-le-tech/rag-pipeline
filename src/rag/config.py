@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     llm_backend: Literal["anthropic", "openrouter", "fake"] = "anthropic"
     llm_model: str = "claude-sonnet-5-5"  # used by the anthropic backend
     llm_max_tokens: int = Field(default=1024, gt=0)
+    # Per-request timeout. SDK defaults are ~10 min, so one stuck connection stalls a batch job.
+    llm_timeout_s: float = Field(default=60.0, gt=0)
     # Free models share upstream capacity; gemma-4 was rate-limited on 2026-10-10, nemotron wasn't.
     openrouter_model: str = "nvidia/nemotron-3-super-120b-a12b:free"
     openrouter_base_url: str = "https://openrouter.ai/api/v1"

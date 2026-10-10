@@ -246,6 +246,13 @@ def test_openai_compatible_generator_handles_null_content():
     assert gen.generate("S", "U") == ""
 
 
+def test_make_generator_sets_request_timeout_on_both_backends():
+    settings = Settings(llm_timeout_s=45)
+
+    assert make_generator(settings.model_copy(update={"llm_backend": "openrouter"})).timeout == 45
+    assert make_generator(settings.model_copy(update={"llm_backend": "anthropic"})).timeout == 45
+
+
 def test_make_generator_openrouter_uses_its_base_url_and_model():
     settings = Settings(llm_backend="openrouter", openrouter_model="google/gemma-4-31b-it:free")
 
