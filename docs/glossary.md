@@ -46,6 +46,10 @@ better recall but slower. It also caps the number of rows returned, so it must b
 **Grounding**: constraining an LLM to answer only from supplied context rather than its
 training data.
 
+**Faithfulness vs. helpfulness**: the tension between answering strictly from sources (safe,
+sometimes unhelpful) and filling gaps from model knowledge (helpful, unverifiable, sometimes
+wrong).
+
 **Golden set**: hand-checked questions with known relevant sources and reference answers, used
 to measure the system.
 

@@ -27,7 +27,8 @@ class Settings(BaseSettings):
     llm_backend: Literal["anthropic", "openrouter", "fake"] = "anthropic"
     llm_model: str = "claude-sonnet-5-5"  # used by the anthropic backend
     llm_max_tokens: int = Field(default=1024, gt=0)
-    openrouter_model: str = "google/gemma-4-31b-it:free"
+    # Free models share upstream capacity; gemma-4 was rate-limited on 2026-10-10, nemotron wasn't.
+    openrouter_model: str = "nvidia/nemotron-3-super-120b-a12b:free"
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     # Keys come from env or .env without the RAG_ prefix. SecretStr hides them in reprs.
     anthropic_api_key: SecretStr | None = Field(default=None, alias="ANTHROPIC_API_KEY")

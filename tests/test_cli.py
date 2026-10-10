@@ -1,5 +1,7 @@
 from dataclasses import replace
 
+import httpx
+import openai
 import psycopg
 import pytest
 from typer.testing import CliRunner
@@ -152,6 +154,33 @@ def test_ask_command_prints_answer_and_cited_sources(tmp_path, monkeypatch, test
     assert "Sources" in result.output
     assert "[1] Rollback" in result.output
     assert "https://kubernetes.io/docs/tasks/rollback/" in result.output
+
+
+def _openai_error(cls, status):
+    request = httpx.Request("POST", "https://openrouter.ai/api/v1/chat/completions")
+    return cls("boom", response=httpx.Response(status, request=request), body=None)
+
+
+@pytest.mark.parametrize(
+    ("exc", "expected"),
+    [
+        (_openai_error(openai.RateLimitError, 429), "rate-limited"),
+        (_openai_error(openai.AuthenticationError, 401), "OPENROUTER_API_KEY"),
+        (openai.APIConnectionError(request=httpx.Request("POST", "https://x")), "network"),
+    ],
+)
+def test_llm_error_hint_matches_failure_kind(exc, expected):
+    settings = Settings(llm_backend="openrouter")
+
+    assert expected in cli.llm_error_hint(exc, settings)
+
+
+def test_llm_error_hint_rate_limit_suggests_switching_openrouter_model():
+    hint = cli.llm_error_hint(
+        _openai_error(openai.RateLimitError, 429), Settings(llm_backend="openrouter")
+    )
+
+    assert "RAG_OPENROUTER_MODEL" in hint
 
 
 def test_search_rejects_unknown_mode(monkeypatch):

@@ -26,6 +26,21 @@ LLM_KEY_NAMES = {"anthropic": "ANTHROPIC_API_KEY", "openrouter": "OPENROUTER_API
 PREVIEW_CHARS = 120
 
 
+def llm_error_hint(exc: Exception, settings: Settings) -> str:
+    """Actionable next step for an LLM failure, by kind of error rather than one generic hint."""
+    key = LLM_KEY_NAMES.get(settings.llm_backend, "the provider API key")
+    if isinstance(exc, anthropic.RateLimitError | openai.RateLimitError):
+        hint = "The model is rate-limited: retry in a minute"
+        if settings.llm_backend == "openrouter":
+            hint += ", or pick another free model with RAG_OPENROUTER_MODEL"
+        return hint + "."
+    if isinstance(exc, anthropic.AuthenticationError | openai.AuthenticationError):
+        return f"Authentication failed: check {key} in .env (never commit it)."
+    if isinstance(exc, anthropic.APIConnectionError | openai.APIConnectionError):
+        return "Could not reach the provider: check your network connection."
+    return f"Check {key} and the model name for backend '{settings.llm_backend}'."
+
+
 def _database_unreachable(exc: Exception) -> typer.Exit:
     typer.secho(f"Cannot reach database: {exc}", fg="red", err=True)
     typer.echo("Is it running? Try: docker compose up -d", err=True)
@@ -60,9 +75,8 @@ def ask_cmd(
                 on_text=lambda piece: typer.echo(piece, nl=False),
             )
         except (anthropic.AnthropicError, openai.OpenAIError) as exc:
-            key = LLM_KEY_NAMES.get(settings.llm_backend, "the provider API key")
             typer.secho(f"\nLLM call failed ({settings.llm_backend}): {exc}", fg="red", err=True)
-            typer.echo(f"Check {key} in .env (never commit it).", err=True)
+            typer.echo(llm_error_hint(exc, settings), err=True)
             raise typer.Exit(1) from exc
 
     if result.refused and not result.retrieved:
