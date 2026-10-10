@@ -1,0 +1,96 @@
+{"id": "llm-0002", "decision": "accepted", "edited_question": "I gave my pod a Windows OS label but it landed on a Linux node \u2014 will the kubelet run it?", "extra_sources": [], "reason": "copies label docs; reworded as user situation", "reviewer": "claude"}
+{"id": "llm-0003", "decision": "accepted", "edited_question": null, "extra_sources": [], "reason": "realistic, answered", "reviewer": "claude"}
+{"id": "llm-0004", "decision": "accepted", "edited_question": "kubeadm init fails with 'malformed pair' when I pass several admission plugins to the API server \u2014 how do I work around it?", "extra_sources": [], "reason": "users paste errors", "reviewer": "claude"}
+{"id": "llm-0005", "decision": "accepted", "edited_question": null, "extra_sources": [], "reason": "realistic, answered", "reviewer": "claude"}
+{"id": "llm-0006", "decision": "accepted", "edited_question": "Someone edited a built-in ClusterRole by mistake \u2014 will Kubernetes restore its default permissions?", "extra_sources": [], "reason": "reworded", "reviewer": "claude"}
+{"id": "llm-0007", "decision": "accepted", "edited_question": null, "extra_sources": [], "reason": "simple but real beginner question", "reviewer": "claude"}
+{"id": "llm-0008", "decision": "accepted", "edited_question": "Is there a tool to turn a docker-compose.yml into Kubernetes manifests?", "extra_sources": [], "reason": "named the tool the user is looking for", "reviewer": "claude"}
+{"id": "llm-0009", "decision": "accepted", "edited_question": "With a hostPath volume, can Kubernetes create the file if it's missing on the node, and will it create the parent folders?", "extra_sources": [], "reason": "reworded", "reviewer": "claude"}
+{"id": "llm-0010", "decision": "rejected", "edited_question": null, "extra_sources": [], "reason": "tutorial-specific step", "reviewer": "claude"}
+{"id": "llm-0011", "decision": "accepted", "edited_question": null, "extra_sources": [], "reason": "realistic, answered", "reviewer": "claude"}
+{"id": "llm-0012", "decision": "accepted", "edited_question": null, "extra_sources": [], "reason": "expert but answered", "reviewer": "claude"}
+{"id": "llm-0013", "decision": "rejected", "edited_question": null, "extra_sources": [], "reason": "contributor process", "reviewer": "claude"}
+{"id": "llm-0014", "decision": "accepted", "edited_question": null, "extra_sources": [], "reason": "realistic, answered", "reviewer": "claude"}
+{"id": "llm-0015", "decision": "accepted", "edited_question": null, "extra_sources": [], "reason": "realistic, answered", "reviewer": "claude"}
+{"id": "llm-0016", "decision": "rejected", "edited_question": null, "extra_sources": [], "reason": "tutorial-specific names", "reviewer": "claude"}
+{"id": "llm-0017", "decision": "accepted", "edited_question": null, "extra_sources": [], "reason": "realistic, answered", "reviewer": "claude"}
+{"id": "llm-0018", "decision": "rejected", "edited_question": null, "extra_sources": [], "reason": "vague reference answer", "reviewer": "claude"}
+{"id": "llm-0019", "decision": "rejected", "edited_question": null, "extra_sources": [], "reason": "tutorial-specific", "reviewer": "claude"}
+{"id": "llm-0020", "decision": "accepted", "edited_question": null, "extra_sources": [], "reason": "realistic, answered", "reviewer": "claude"}
+{"id": "llm-0021", "decision": "accepted", "edited_question": "Is it safe to force-delete a StatefulSet pod that's stuck terminating?", "extra_sources": [], "reason": "reworded", "reviewer": "claude"}
+{"id": "llm-0022", "decision": "accepted", "edited_question": "I want to add my own API types to Kubernetes \u2014 should I use a CRD or an aggregated API server?", "extra_sources": [], "reason": "reworded", "reviewer": "claude"}
+{"id": "llm-0023", "decision": "accepted", "edited_question": null, "extra_sources": [], "reason": "realistic, answered", "reviewer": "claude"}
+{"id": "llm-0024", "decision": "accepted", "edited_question": null, "extra_sources": [], "reason": "realistic, answered", "reviewer": "claude"}
+{"id": "llm-0025", "decision": "accepted", "edited_question": "How do I talk to the Kubernetes API from a Python script using my kubeconfig?", "extra_sources": [], "reason": "verified page covers pip install kubernetes", "reviewer": "claude"}
+{"id": "llm-0026", "decision": "accepted", "edited_question": null, "extra_sources": [], "reason": "realistic, answered", "reviewer": "claude"}
+{"id": "llm-0027", "decision": "rejected", "edited_question": null, "extra_sources": [], "reason": "contributor process; reference answer adds unstated facts", "reviewer": "claude"}
+{"id": "llm-0028", "decision": "accepted", "edited_question": null, "extra_sources": [], "reason": "realistic, answered", "reviewer": "claude"}
+{"id": "llm-0029", "decision": "accepted", "edited_question": "Is there any reason to create a ReplicaSet myself instead of a Deployment?", "extra_sources": [], "reason": "reworded", "reviewer": "claude"}
+{"id": "llm-0030", "decision": "rejected", "edited_question": null, "extra_sources": [], "reason": "contributor codegen tag; passage unclear", "reviewer": "claude"}
+{"id": "llm-0031", "decision": "accepted", "edited_question": null, "extra_sources": [], "reason": "realistic, answered", "reviewer": "claude"}
+{"id": "llm-0032", "decision": "accepted", "edited_question": "How do I get distributed traces from the API server and kubelet?", "extra_sources": [], "reason": "reworded", "reviewer": "claude"}
+{"id": "llm-0033", "decision": "accepted", "edited_question": "Is there a limit to how many cloud disks Kubernetes will attach to one node?", "extra_sources": [], "reason": "vague reference; reworded", "reviewer": "claude"}
+{"id": "llm-0034", "decision": "rejected", "edited_question": null, "extra_sources": [], "reason": "duplicate of llm-0029", "reviewer": "claude"}
+{"id": "llm-0035", "decision": "accepted", "edited_question": "A service account token leaked \u2014 how do I invalidate it before it expires?", "extra_sources": [], "reason": "reworded", "reviewer": "claude"}
+{"id": "llm-0036", "decision": "accepted", "edited_question": null, "extra_sources": [], "reason": "realistic, answered", "reviewer": "claude"}
+{"id": "llm-0037", "decision": "accepted", "edited_question": null, "extra_sources": [], "reason": "realistic, answered", "reviewer": "claude"}
+{"id": "llm-0038", "decision": "rejected", "edited_question": null, "extra_sources": [], "reason": "asks why; passage only states limitation", "reviewer": "claude"}
+{"id": "llm-0039", "decision": "rejected", "edited_question": null, "extra_sources": [], "reason": "answer lives on another page", "reviewer": "claude"}
+{"id": "llm-0040", "decision": "accepted", "edited_question": "How should I keep sensitive workloads from sharing nodes with less trusted pods?", "extra_sources": [], "reason": "reworded", "reviewer": "claude"}
+{"id": "llm-0041", "decision": "rejected", "edited_question": null, "extra_sources": [], "reason": "navigation question", "reviewer": "claude"}
+{"id": "llm-0042", "decision": "accepted", "edited_question": "In an Indexed Job, how does each pod know which work item to process?", "extra_sources": [], "reason": "reworded", "reviewer": "claude"}
+{"id": "llm-0043", "decision": "accepted", "edited_question": "Can I make the kubelet wait less than 5 minutes between restarts of a crash-looping container?", "extra_sources": [], "reason": "reworded", "reviewer": "claude"}
+{"id": "llm-0044", "decision": "accepted", "edited_question": "Kubernetes Dashboard only shows the default namespace \u2014 how do I see my other namespaces?", "extra_sources": [], "reason": "reworded", "reviewer": "claude"}
+{"id": "llm-0045", "decision": "accepted", "edited_question": "If I resize a container's memory in place, will it restart, and how do I check the new value was applied?", "extra_sources": [], "reason": "removed tutorial values", "reviewer": "claude"}
+{"id": "llm-0046", "decision": "accepted", "edited_question": null, "extra_sources": [], "reason": "realistic, answered", "reviewer": "claude"}
+{"id": "llm-0048", "decision": "accepted", "edited_question": null, "extra_sources": [], "reason": "realistic, answered", "reviewer": "claude"}
+{"id": "llm-0049", "decision": "accepted", "edited_question": "If VPA can't resize a pod in place, what does it do instead?", "extra_sources": [], "reason": "reworded", "reviewer": "claude"}
+{"id": "llm-0050", "decision": "accepted", "edited_question": null, "extra_sources": [], "reason": "realistic, answered", "reviewer": "claude"}
+{"id": "llm-0051", "decision": "accepted", "edited_question": null, "extra_sources": [], "reason": "expert but answered", "reviewer": "claude"}
+{"id": "llm-0052", "decision": "accepted", "edited_question": null, "extra_sources": [], "reason": "realistic, answered", "reviewer": "claude"}
+{"id": "llm-0053", "decision": "accepted", "edited_question": null, "extra_sources": [], "reason": "great troubleshooting case", "reviewer": "claude"}
+{"id": "llm-0054", "decision": "rejected", "edited_question": null, "extra_sources": [], "reason": "docs contributor process", "reviewer": "claude"}
+{"id": "llm-0055", "decision": "rejected", "edited_question": null, "extra_sources": [], "reason": "trivial, tutorial-specific name", "reviewer": "claude"}
+{"id": "llm-0056", "decision": "rejected", "edited_question": null, "extra_sources": [], "reason": "docs contributor process", "reviewer": "claude"}
+{"id": "llm-0057", "decision": "rejected", "edited_question": null, "extra_sources": [], "reason": "tutorial-specific", "reviewer": "claude"}
+{"id": "llm-0058", "decision": "accepted", "edited_question": null, "extra_sources": [], "reason": "realistic, answered", "reviewer": "claude"}
+{"id": "llm-0059", "decision": "accepted", "edited_question": null, "extra_sources": [], "reason": "realistic, answered", "reviewer": "claude"}
+{"id": "llm-0060", "decision": "accepted", "edited_question": "How do I stop one team's namespace from using more than its share of CPU, memory and pods?", "extra_sources": ["concepts/policy/resource-quotas.md"], "reason": "reworded; quota concept page also answers", "reviewer": "claude"}
+{"id": "llm-0061", "decision": "accepted", "edited_question": "How can a controller tell that a node is being drained or shutting down?", "extra_sources": [], "reason": "reworded", "reviewer": "claude"}
+{"id": "llm-0062", "decision": "accepted", "edited_question": "Why is access to the container runtime socket on a node dangerous?", "extra_sources": [], "reason": "reworded", "reviewer": "claude"}
+{"id": "llm-0063", "decision": "rejected", "edited_question": null, "extra_sources": [], "reason": "docs localization process", "reviewer": "claude"}
+{"id": "llm-0064", "decision": "accepted", "edited_question": "How do I check whether native sidecar containers are enabled on my API server and nodes?", "extra_sources": [], "reason": "reworded", "reviewer": "claude"}
+{"id": "llm-0065", "decision": "accepted", "edited_question": "What subject and key usages must a kubelet serving certificate CSR have to be signed?", "extra_sources": [], "reason": "reworded", "reviewer": "claude"}
+{"id": "llm-0066", "decision": "accepted", "edited_question": "How do I upgrade kubeadm and kubectl on an Ubuntu worker node without them being auto-upgraded later?", "extra_sources": [], "reason": "reworded", "reviewer": "claude"}
+{"id": "llm-0067", "decision": "accepted", "edited_question": "My pod with two volumes is stuck unschedulable after one volume was provisioned \u2014 why, and how do I fix it?", "extra_sources": [], "reason": "reworded", "reviewer": "claude"}
+{"id": "llm-0069", "decision": "accepted", "edited_question": "How should kube-proxy authenticate to the API server if it isn't using TLS bootstrapping?", "extra_sources": [], "reason": "reworded", "reviewer": "claude"}
+{"id": "llm-0070", "decision": "accepted", "edited_question": null, "extra_sources": [], "reason": "realistic, answered", "reviewer": "claude"}
+{"id": "llm-0071", "decision": "rejected", "edited_question": null, "extra_sources": [], "reason": "abstract organisational advice", "reviewer": "claude"}
+{"id": "llm-0072", "decision": "accepted", "edited_question": null, "extra_sources": [], "reason": "basic but real concept question", "reviewer": "claude"}
+{"id": "llm-0073", "decision": "accepted", "edited_question": "My postStart hook fails \u2014 where can I see that, given its logs aren't in pod events?", "extra_sources": [], "reason": "reworded", "reviewer": "claude"}
+{"id": "llm-0074", "decision": "accepted", "edited_question": null, "extra_sources": [], "reason": "realistic, answered", "reviewer": "claude"}
+{"id": "llm-0075", "decision": "accepted", "edited_question": null, "extra_sources": [], "reason": "flag question, answered", "reviewer": "claude"}
+{"id": "llm-0076", "decision": "accepted", "edited_question": "How do I request a GPU for my pod with dynamic resource allocation?", "extra_sources": [], "reason": "reworded", "reviewer": "claude"}
+{"id": "llm-0077", "decision": "accepted", "edited_question": "Can the kubelet credential provider cache image pull credentials per service account?", "extra_sources": [], "reason": "reworded", "reviewer": "claude"}
+{"id": "llm-0078", "decision": "accepted", "edited_question": null, "extra_sources": ["concepts/storage/volumes.md"], "reason": "volumes concept page also answers", "reviewer": "claude"}
+{"id": "llm-0080", "decision": "accepted", "edited_question": null, "extra_sources": ["concepts/overview/working-with-objects/namespaces.md"], "reason": "namespaces concept page also answers", "reviewer": "claude"}
+{"id": "llm-0081", "decision": "accepted", "edited_question": "Can I bump a running container's memory limit without recreating the pod?", "extra_sources": ["tasks/configure-pod-container/resize-container-resources.md"], "reason": "reworded; resize task also answers", "reviewer": "claude"}
+{"id": "llm-0082", "decision": "accepted", "edited_question": null, "extra_sources": [], "reason": "niche but real", "reviewer": "claude"}
+{"id": "llm-0083", "decision": "accepted", "edited_question": null, "extra_sources": [], "reason": "realistic, answered", "reviewer": "claude"}
+{"id": "llm-0084", "decision": "accepted", "edited_question": "Can I give high-priority pods their own resource quota, separate from low-priority ones?", "extra_sources": [], "reason": "removed tutorial framing", "reviewer": "claude"}
+{"id": "llm-0085", "decision": "accepted", "edited_question": null, "extra_sources": [], "reason": "realistic, answered", "reviewer": "claude"}
+{"id": "llm-0086", "decision": "rejected", "edited_question": null, "extra_sources": [], "reason": "query-param boilerplate shared by ~160 generated pages: ambiguous relevance", "reviewer": "claude"}
+{"id": "llm-0087", "decision": "rejected", "edited_question": null, "extra_sources": [], "reason": "query-param boilerplate: ambiguous relevance", "reviewer": "claude"}
+{"id": "llm-0088", "decision": "rejected", "edited_question": null, "extra_sources": [], "reason": "query-param boilerplate: ambiguous relevance", "reviewer": "claude"}
+{"id": "llm-0089", "decision": "accepted", "edited_question": null, "extra_sources": [], "reason": "unique field, answered", "reviewer": "claude"}
+{"id": "llm-0090", "decision": "rejected", "edited_question": null, "extra_sources": [], "reason": "nonsense: api-versions has no namespace scope", "reviewer": "claude"}
+{"id": "llm-0091", "decision": "accepted", "edited_question": "In coordinated leader election, what happens if the candidates disagree on the strategy?", "extra_sources": [], "reason": "reworded", "reviewer": "claude"}
+{"id": "llm-0092", "decision": "rejected", "edited_question": null, "extra_sources": [], "reason": "query-param boilerplate: ambiguous relevance", "reviewer": "claude"}
+{"id": "llm-0093", "decision": "rejected", "edited_question": null, "extra_sources": [], "reason": "fsType text shared by many volume types: ambiguous", "reviewer": "claude"}
+{"id": "llm-0094", "decision": "rejected", "edited_question": null, "extra_sources": [], "reason": "query-param boilerplate: ambiguous relevance", "reviewer": "claude"}
+{"id": "llm-0095", "decision": "accepted", "edited_question": null, "extra_sources": [], "reason": "specific metric, answered", "reviewer": "claude"}
+{"id": "llm-0096", "decision": "rejected", "edited_question": null, "extra_sources": [], "reason": "query-param boilerplate: ambiguous relevance", "reviewer": "claude"}
+{"id": "llm-0097", "decision": "accepted", "edited_question": "Which kubelet flag sets the DNS server IP that pods with ClusterFirst DNS get?", "extra_sources": [], "reason": "reworded", "reviewer": "claude"}
+{"id": "llm-0098", "decision": "rejected", "edited_question": null, "extra_sources": [], "reason": "generic apiVersion/kind boilerplate", "reviewer": "claude"}
+{"id": "llm-0099", "decision": "rejected", "edited_question": null, "extra_sources": [], "reason": "query-param boilerplate: ambiguous relevance", "reviewer": "claude"}
+{"id": "llm-0100", "decision": "rejected", "edited_question": null, "extra_sources": [], "reason": "query-param boilerplate: ambiguous relevance", "reviewer": "claude"}
