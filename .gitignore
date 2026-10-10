@@ -1,0 +1,18 @@
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+.env
+.DS_Store
+
+# Raw corpus and generated artifacts stay local
+data/*
+!data/.gitkeep
+evals/results/
