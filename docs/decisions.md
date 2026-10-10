@@ -2,6 +2,15 @@
 
 Newest first. Each entry: context, decision, consequences. Revisit when evals say otherwise.
 
+## 2026-10-10: OpenRouter free models as an alternative LLM backend
+- **Context**: owner wants to iterate without paying per call.
+- **Decision**: add `OpenAICompatibleGenerator` (OpenAI Chat Completions format via the `openai`
+  SDK) and `RAG_LLM_BACKEND=openrouter`, default `google/gemma-4-31b-it:free`. Claude stays the
+  default backend.
+- **Consequence**: free iteration, subject to rate limits and possible prompt logging (public
+  docs, so acceptable). Smaller free models may follow citation rules less reliably; Phase 4
+  compares free vs. Claude answer quality instead of assuming.
+
 ## 2026-10-10: Grounded prompt with numbered passages, validated citations, exact refusal
 - **Context**: answers must be verifiable and must not invent sources or facts.
 - **Decision**: numbered context blocks (heading path + URL + text); rules to cite `[n]` per

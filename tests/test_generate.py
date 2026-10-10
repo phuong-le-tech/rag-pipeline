@@ -5,7 +5,12 @@ import pytest
 from rag.config import Settings
 from rag.generate.answer import REFUSAL, answer_question
 from rag.generate.citations import check_citations, parse_citations
-from rag.generate.generator import ClaudeGenerator, FakeGenerator, make_generator
+from rag.generate.generator import (
+    ClaudeGenerator,
+    FakeGenerator,
+    OpenAICompatibleGenerator,
+    make_generator,
+)
 from rag.generate.prompt import build_prompt
 from rag.retrieval.retriever import RetrieverConfig
 from rag.retrieval.search import Hit
@@ -178,3 +183,74 @@ def test_make_generator_picks_backend():
     claude = make_generator(Settings(llm_backend="anthropic", llm_model="claude-haiku-5-5"))
     assert isinstance(claude, ClaudeGenerator)
     assert claude.model == "claude-haiku-5-5"
+
+
+# --- OpenAI-compatible wrapper (OpenRouter), stub client ------------------------------------
+
+
+class StubCompletions:
+    def __init__(self, text="Ans [1].", pieces=("Ans ", None, "[1].")):
+        self.text = text
+        self.pieces = pieces
+        self.requests = []
+
+    def create(self, **request):
+        self.requests.append(request)
+        if request.get("stream"):
+            return iter(
+                [SimpleNamespace(choices=[])]  # providers sometimes send empty keep-alive chunks
+                + [
+                    SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content=p))])
+                    for p in self.pieces
+                ]
+            )
+        message = SimpleNamespace(content=self.text)
+        return SimpleNamespace(choices=[SimpleNamespace(message=message)])
+
+
+def openai_client(completions):
+    return SimpleNamespace(chat=SimpleNamespace(completions=completions))
+
+
+def test_openai_compatible_generator_sends_system_then_user():
+    completions = StubCompletions()
+    gen = OpenAICompatibleGenerator(
+        model="m:free", max_tokens=128, client=openai_client(completions)
+    )
+
+    assert gen.generate("SYS", "USER") == "Ans [1]."
+    assert completions.requests == [
+        {
+            "model": "m:free",
+            "max_tokens": 128,
+            "messages": [
+                {"role": "system", "content": "SYS"},
+                {"role": "user", "content": "USER"},
+            ],
+        }
+    ]
+
+
+def test_openai_compatible_generator_streams_and_skips_empty_chunks():
+    completions = StubCompletions()
+    gen = OpenAICompatibleGenerator(model="m", max_tokens=64, client=openai_client(completions))
+
+    assert list(gen.stream("S", "U")) == ["Ans ", "[1]."]
+    assert completions.requests[0]["stream"] is True
+
+
+def test_openai_compatible_generator_handles_null_content():
+    completions = StubCompletions(text=None)
+    gen = OpenAICompatibleGenerator(model="m", max_tokens=64, client=openai_client(completions))
+
+    assert gen.generate("S", "U") == ""
+
+
+def test_make_generator_openrouter_uses_its_base_url_and_model():
+    settings = Settings(llm_backend="openrouter", openrouter_model="google/gemma-4-31b-it:free")
+
+    gen = make_generator(settings)
+
+    assert isinstance(gen, OpenAICompatibleGenerator)
+    assert gen.model == "google/gemma-4-31b-it:free"
+    assert gen.base_url == "https://openrouter.ai/api/v1"

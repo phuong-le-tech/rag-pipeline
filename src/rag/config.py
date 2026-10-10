@@ -24,11 +24,14 @@ class Settings(BaseSettings):
     embedding_threads: int | None = Field(default=None, gt=0)
     reranker_model: str = "Xenova/ms-marco-MiniLM-L-6-v2"
 
-    llm_backend: Literal["anthropic", "fake"] = "anthropic"
-    llm_model: str = "claude-sonnet-5-5"
+    llm_backend: Literal["anthropic", "openrouter", "fake"] = "anthropic"
+    llm_model: str = "claude-sonnet-5-5"  # used by the anthropic backend
     llm_max_tokens: int = Field(default=1024, gt=0)
-    # Read from ANTHROPIC_API_KEY (env or .env), no RAG_ prefix. SecretStr hides it in reprs.
+    openrouter_model: str = "google/gemma-4-31b-it:free"
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    # Keys come from env or .env without the RAG_ prefix. SecretStr hides them in reprs.
     anthropic_api_key: SecretStr | None = Field(default=None, alias="ANTHROPIC_API_KEY")
+    openrouter_api_key: SecretStr | None = Field(default=None, alias="OPENROUTER_API_KEY")
 
     def embedding_model_name(self) -> str:
         return {

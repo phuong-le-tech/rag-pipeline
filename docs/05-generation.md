@@ -82,9 +82,23 @@ have no answer in the docs.
 `retrieved` (everything the model saw). That last field is for evals: to judge faithfulness
 you need exactly what the model was shown.
 
-The LLM wrapper is ~60 lines over the Anthropic SDK: one request shape, `generate()` for a full
-answer, `stream()` for token-by-token output in the CLI. Model `claude-sonnet-5-5` by default
-(`RAG_LLM_MODEL`), a balance of quality and cost; Haiku is the cheaper ablation row.
+Each LLM wrapper is a few dozen lines: one request shape, `generate()` for a full answer,
+`stream()` for token-by-token output in the CLI. Pick one with `RAG_LLM_BACKEND`:
+
+| Backend | Class | Model setting | Key | Cost |
+|---|---|---|---|---|
+| `anthropic` (default) | `ClaudeGenerator` | `RAG_LLM_MODEL` (`claude-sonnet-5-5`) | `ANTHROPIC_API_KEY` | ~1.2¢ per answer on Sonnet |
+| `openrouter` | `OpenAICompatibleGenerator` | `RAG_OPENROUTER_MODEL` (`google/gemma-4-31b-it:free`) | `OPENROUTER_API_KEY` | free tier: rate-limited, prompts may be logged |
+| `fake` | `FakeGenerator` | – | – | tests only |
+
+`OpenAICompatibleGenerator` speaks the OpenAI Chat Completions format, which most providers
+copy (OpenRouter, Groq, Gemini, Ollama, vLLM), so switching provider means changing a base URL
+and a model name, not writing code. Two provider quirks it handles: streaming may send chunks
+with no choices (keep-alives), and `content` may be `null`.
+
+Rough cost of Phase 4 on Claude (assuming Sonnet at ~$3 / $15 per million input / output
+tokens): ≈ $8 per full answer-and-judge run over 100 questions, ≈ $2.50 on Haiku, and $0 for
+all retrieval-only evaluations, which use only local models.
 
 **API key handling:** `ANTHROPIC_API_KEY` is read by `Settings` (from the environment or
 `.env`) into a `SecretStr`, which prints as `**********` if logged, and is passed to the

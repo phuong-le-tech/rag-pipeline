@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Annotated
 
 import anthropic
+import openai
 import psycopg
 import typer
 from pgvector.psycopg import register_vector
@@ -21,6 +22,7 @@ from rag.retrieval.retriever import Retriever, RetrieverConfig
 app = typer.Typer(help="RAG pipeline commands.", no_args_is_help=True)
 
 SUPPORTED_SUFFIXES = {".md", ".markdown", ".txt"}
+LLM_KEY_NAMES = {"anthropic": "ANTHROPIC_API_KEY", "openrouter": "OPENROUTER_API_KEY"}
 PREVIEW_CHARS = 120
 
 
@@ -57,9 +59,10 @@ def ask_cmd(
                 config,
                 on_text=lambda piece: typer.echo(piece, nl=False),
             )
-        except anthropic.AnthropicError as exc:
-            typer.secho(f"\nLLM call failed: {exc}", fg="red", err=True)
-            typer.echo("Set ANTHROPIC_API_KEY in .env (never commit it).", err=True)
+        except (anthropic.AnthropicError, openai.OpenAIError) as exc:
+            key = LLM_KEY_NAMES.get(settings.llm_backend, "the provider API key")
+            typer.secho(f"\nLLM call failed ({settings.llm_backend}): {exc}", fg="red", err=True)
+            typer.echo(f"Check {key} in .env (never commit it).", err=True)
             raise typer.Exit(1) from exc
 
     if result.refused and not result.retrieved:

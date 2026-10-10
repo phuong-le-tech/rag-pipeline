@@ -30,6 +30,8 @@ Configuration comes from environment variables (or a local `.env`), prefix `RAG_
 | `RAG_EMBEDDING_BACKEND` | `local` (`openai`, `fake`) |
 | `RAG_EMBEDDING_DIM` | `384` (1536 for OpenAI) |
 | `RAG_CHUNK_MAX_CHARS` | `1500` |
+| `RAG_LLM_BACKEND` | `anthropic` (`openrouter`, `fake`) |
+| `RAG_OPENROUTER_MODEL` | `google/gemma-4-31b-it:free` |
 
 Embeddings run locally by default (no key). `ANTHROPIC_API_KEY` is needed for generation
 (Phase 3); `OPENAI_API_KEY` only if you switch `RAG_EMBEDDING_BACKEND=openai`. Never commit `.env`.
