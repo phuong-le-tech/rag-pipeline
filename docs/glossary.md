@@ -1,0 +1,46 @@
+# Glossary
+
+**ANN (approximate nearest neighbour)**: vector search that skips exhaustive comparison for
+speed, at a small recall cost. See HNSW.
+
+**BM25**: classic keyword ranking formula: term frequency, inverse document frequency, length
+normalisation. Postgres full-text ranking is BM25-like.
+
+**Chunk**: a passage of a document; the unit that is embedded, retrieved and cited.
+
+**Cosine similarity**: angle-based similarity between two vectors, from -1 to 1. Ignores
+vector length.
+
+**Cross-encoder / reranker**: model that reads query and passage *together* and scores
+relevance. More accurate than embeddings, too slow to run on the whole corpus, so it re-orders
+the top-k only.
+
+**Dense retrieval**: search by embedding similarity (meaning).
+
+**Embedding**: fixed-length vector representing text meaning.
+
+**Faithfulness**: whether every claim in an answer is supported by the retrieved context.
+
+**Golden set**: hand-checked questions with known relevant sources and reference answers, used
+to measure the system.
+
+**HNSW**: graph-based ANN index; fast, accurate, memory-hungry.
+
+**Hybrid search**: combining dense and sparse results.
+
+**MRR (mean reciprocal rank)**: average of 1/rank of the first relevant result. Rewards putting
+the right chunk first.
+
+**nDCG**: ranking metric that rewards relevant results near the top, with graded relevance.
+
+**Recall@k**: share of questions whose relevant source appears in the top k results.
+
+**RRF (reciprocal rank fusion)**: merges ranked lists by summing `1 / (k + rank)`; needs no
+score calibration between systems.
+
+**Sparse retrieval**: keyword-based search (BM25, full-text).
+
+**Stemming**: reducing words to a root (`rolling` → `roll`) so variants match.
+
+**tsvector / GIN**: Postgres full-text document representation and the index type that makes it
+fast.

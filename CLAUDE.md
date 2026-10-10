@@ -8,6 +8,16 @@ ablation table is the README centrepiece.
 - Read `.claude/plans/rag-pipeline.plan.md`: phases, decisions, risks. Tick boxes as tasks land.
 - Work the current phase in order; do not start a later phase without being asked.
 
+## Docs are a deliverable (the owner is learning RAG through this project)
+- `docs/` teaches the project: one chapter per pipeline stage, each with
+  **Concept → In this repo (code links) → Trade-offs → Try it**. Index: `docs/README.md`.
+- Every change that adds or alters behaviour updates docs **in the same commit**: the relevant
+  chapter, the status table in `docs/README.md`, new terms in `docs/glossary.md`, and any real
+  choice in `docs/decisions.md` (newest first, context / decision / consequence).
+- Starting a new phase means writing its chapter (e.g. `04-retrieval.md` for Phase 2).
+- Explain the *why* for a learner: plain language, small examples, no copy-pasted API docs.
+- When eval numbers exist, docs quote them from `rag eval` output, never invented.
+
 ## Commands
 ```bash
 uv sync                                   # Python 3.12 venv + deps

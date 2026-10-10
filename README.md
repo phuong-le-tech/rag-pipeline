@@ -7,6 +7,9 @@ measures every change.
 
 > Status: scaffolding. See [Roadmap](#roadmap).
 
+**New to RAG?** The [docs](docs/README.md) explain every stage (concept, code, trade-offs,
+experiments) and grow with the project.
+
 ## Quickstart
 
 Requires [uv](https://docs.astral.sh/uv/) and Docker.
