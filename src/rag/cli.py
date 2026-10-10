@@ -13,8 +13,10 @@ from pgvector.psycopg import register_vector
 from rag.config import Settings
 from rag.db import connect, init_db
 from rag.embed import make_embedder
+from rag.evals.answers import answers_markdown, evaluate_answers, write_answer_results
 from rag.evals.drafting import draft_items, sample_chunks
 from rag.evals.golden import load_golden, unknown_sources
+from rag.evals.judge import load_unanswerable
 from rag.evals.runner import ABLATIONS, evaluate, to_markdown, write_results
 from rag.generate.answer import answer_question
 from rag.generate.generator import make_generator
@@ -148,6 +150,81 @@ def eval_cmd(
     typer.echo(to_markdown(reports))
     path = write_results(out, reports, meta)
     typer.secho(f"Saved {path}", fg="green")
+
+
+@app.command("eval-answers")
+def eval_answers_cmd(
+    config: Annotated[
+        str, typer.Option(help="Retrieval ablation to answer with.")
+    ] = "hybrid+rerank",
+    golden: Annotated[Path, typer.Option(help="Golden set (JSONL).")] = Path("evals/golden.jsonl"),
+    unanswerable: Annotated[Path, typer.Option(help="Questions to refuse.")] = Path(
+        "evals/unanswerable.jsonl"
+    ),
+    judge_backend: Annotated[
+        str | None, typer.Option(help="anthropic | openrouter | fake (default: RAG_LLM_BACKEND).")
+    ] = None,
+    limit: Annotated[int | None, typer.Option(help="Only the first N of each set.")] = None,
+    out: Annotated[Path, typer.Option(help="Results directory.")] = Path("evals/results"),
+    corpus: Annotated[Path, typer.Option(help="Corpus root (for CORPUS_REF).")] = Path(
+        "data/k8s-docs"
+    ),
+) -> None:
+    """Generate answers, grade them with an LLM judge, check citations and refusals."""
+    if config not in ABLATIONS:
+        raise typer.BadParameter(f"unknown config {config!r}; choose from {list(ABLATIONS)}")
+    settings = Settings()
+    judge_settings = settings.model_copy(
+        update={"llm_backend": judge_backend or settings.llm_backend}
+    )
+    golden_items = load_golden(golden)[:limit]
+    refuse_items = load_unanswerable(unanswerable)[:limit] if unanswerable.exists() else []
+    retriever_config = ABLATIONS[config]
+    try:
+        conn = connect(settings)
+    except psycopg.OperationalError as exc:
+        raise _database_unreachable(exc) from exc
+
+    with conn:
+        register_vector(conn)
+        reranker = make_reranker(settings) if retriever_config.rerank else None
+        retriever = Retriever(conn, make_embedder(settings), reranker)
+        try:
+            report = evaluate_answers(
+                golden_items,
+                refuse_items,
+                retriever,
+                make_generator(settings),
+                make_generator(judge_settings),
+                retriever_config,
+                on_progress=lambda done, total: typer.echo(f"  {done}/{total}", err=True),
+            )
+        except (anthropic.AnthropicError, openai.OpenAIError) as exc:
+            typer.secho(f"LLM call failed: {exc}", fg="red", err=True)
+            typer.echo(llm_error_hint(exc, settings), err=True)
+            raise typer.Exit(1) from exc
+
+    ref_file = corpus / "CORPUS_REF"
+    meta = {
+        "timestamp": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "corpus_ref": ref_file.read_text().strip() if ref_file.exists() else "unknown",
+        "fingerprint": settings.pipeline_fingerprint(),
+        "retrieval": config,
+        "llm": _llm_label(settings),
+        "judge": _llm_label(judge_settings),
+    }
+    typer.echo(answers_markdown(report))
+    path = write_answer_results(out, report, meta)
+    typer.secho(f"Saved {path}", fg="green")
+
+
+def _llm_label(settings: Settings) -> str:
+    match settings.llm_backend:
+        case "anthropic":
+            return f"anthropic:{settings.llm_model}"
+        case "openrouter":
+            return f"openrouter:{settings.openrouter_model}"
+    return settings.llm_backend
 
 
 @app.command("draft-questions")

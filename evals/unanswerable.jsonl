@@ -1,0 +1,15 @@
+{"id": "u01-sourdough", "question": "How do I bake a sourdough bread?", "origin": "human", "kind": "off-topic"}
+{"id": "u02-react", "question": "When should I use useEffect versus useLayoutEffect in React?", "origin": "human", "kind": "off-topic"}
+{"id": "u03-python-gil", "question": "Does the Python GIL prevent multithreaded CPU-bound code from scaling?", "origin": "human", "kind": "off-topic"}
+{"id": "u04-lambda", "question": "How do I increase the timeout of an AWS Lambda function?", "origin": "human", "kind": "off-topic"}
+{"id": "u05-helm-values", "question": "How do I override a nested value in a Helm chart's values.yaml from the command line?", "origin": "human", "kind": "adjacent-tool"}
+{"id": "u06-istio-retries", "question": "How do I configure automatic retries in an Istio VirtualService?", "origin": "human", "kind": "adjacent-tool"}
+{"id": "u07-argocd-waves", "question": "How do Argo CD sync waves decide the order resources are applied?", "origin": "human", "kind": "adjacent-tool"}
+{"id": "u08-terraform-eks", "question": "Which Terraform module inputs control the node group size of an EKS cluster?", "origin": "human", "kind": "adjacent-tool"}
+{"id": "u09-eks-ipv6", "question": "How do I enable IPv6 prefix delegation for the AWS VPC CNI on EKS?", "origin": "human", "kind": "adjacent-tool"}
+{"id": "u10-docker-desktop", "question": "How much memory should I give Docker Desktop on a Mac to run a local cluster?", "origin": "human", "kind": "adjacent-tool"}
+{"id": "u11-fake-flag", "question": "What does the kubectl apply --auto-heal flag do?", "origin": "human", "kind": "false-premise"}
+{"id": "u12-k8s-2", "question": "What are the breaking changes in Kubernetes 2.0?", "origin": "human", "kind": "false-premise"}
+{"id": "u13-fake-resource", "question": "How do I create a PodAutoBalancer resource to spread pods evenly across zones?", "origin": "human", "kind": "false-premise"}
+{"id": "u14-pricing", "question": "How much does a managed Kubernetes control plane cost per hour on GKE?", "origin": "human", "kind": "off-topic"}
+{"id": "u15-openshift-routes", "question": "How do I expose a service with an OpenShift Route and edge TLS termination?", "origin": "human", "kind": "adjacent-tool"}

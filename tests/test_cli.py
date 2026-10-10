@@ -277,6 +277,55 @@ def test_draft_questions_writes_reviewable_jsonl(tmp_path, monkeypatch, test_dat
     assert "2 drafts" in result.output
 
 
+@pytest.mark.integration
+def test_eval_answers_command_writes_report(tmp_path, monkeypatch, test_database_url):
+    corpus = tmp_path / "corpus"
+    (corpus / "tasks").mkdir(parents=True)
+    (corpus / "tasks" / "rollback.md").write_text(
+        "---\ntitle: Rollback\n---\nUse kubectl rollout undo to revert a Deployment.\n"
+    )
+    golden = tmp_path / "golden.jsonl"
+    golden.write_text(
+        '{"id": "q1", "question": "revert a deployment", "relevant_sources": '
+        '["tasks/rollback.md"], "reference_answer": "rollout undo", "origin": "human"}\n'
+    )
+    unanswerable = tmp_path / "u.jsonl"
+    unanswerable.write_text('{"id": "u1", "question": "bake bread", "origin": "human"}\n')
+    monkeypatch.setenv("RAG_DATABASE_URL", test_database_url)
+    monkeypatch.setenv("RAG_EMBEDDING_BACKEND", "fake")
+    monkeypatch.setenv("RAG_EMBEDDING_DIM", "8")
+    monkeypatch.setenv("RAG_LLM_BACKEND", "fake")
+    with psycopg.connect(test_database_url) as conn:
+        conn.execute("TRUNCATE documents RESTART IDENTITY CASCADE")
+    runner.invoke(cli.app, ["ingest", str(corpus)])
+    out = tmp_path / "results"
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "eval-answers",
+            "--config",
+            "keyword",
+            "--golden",
+            str(golden),
+            "--unanswerable",
+            str(unanswerable),
+            "--out",
+            str(out),
+            "--corpus",
+            str(corpus),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "Faithfulness" in result.output
+    (saved,) = out.glob("*-answers.json")
+    data = json.loads(saved.read_text())
+    assert data["meta"]["llm"] == "fake"
+    assert data["meta"]["judge"] == "fake"
+    assert data["summary"]["answerable_n"] == 1
+
+
 def test_eval_rejects_unknown_config_name(tmp_path):
     result = runner.invoke(cli.app, ["eval", "--config", "magic", "--out", str(tmp_path)])
 
