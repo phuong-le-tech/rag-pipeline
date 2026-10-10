@@ -27,6 +27,7 @@ scripts/fetch_corpus.sh [ref]             # k8s docs -> data/k8s-docs (+ CORPUS_
 uv run rag chunk data/k8s-docs --preview  # inspect cleaning + chunking, no DB
 RAG_EMBEDDING_THREADS=6 uv run rag ingest data/k8s-docs   # incremental; ALWAYS the corpus root
                                           # (first full run ~35-60 min on CPU, re-runs seconds)
+uv run rag eval [--config NAME] [--limit N]   # retrieval metrics on evals/golden.jsonl
 uv run ruff format . && uv run ruff check .
 uv run pytest -m "not integration" --cov=rag   # unit tests
 uv run pytest -m integration                   # needs compose DB

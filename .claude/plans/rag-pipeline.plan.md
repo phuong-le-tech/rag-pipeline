@@ -54,10 +54,13 @@ ablation table is the centrepiece of the README.
 - [x] first real Claude run: 2/3 correct, refusal works; failure #1 (CPU sort) = retrieval, logged in docs ch. 5
 
 ### Phase 4 — Evaluation (H)
-- [ ] `evals/golden.jsonl` `{id, question, reference_answer, relevant_sources[], tags[]}`
-- [ ] LLM-drafted questions + human review + 20–30 hand-written
-- [ ] recall@k, MRR, nDCG@10; LLM-judge faithfulness/relevance; citation precision
-- [ ] `rag eval --config`, `rag eval --ablation` → `evals/results/<ts>.json` + Markdown table
+- [x] `evals/golden.jsonl` `{id, question, relevant_sources[], reference_answer, tags[], origin}`
+- [x] 25 hand-written questions (pooled corrections after first run)
+- [ ] LLM-drafted questions (Nemotron free, retry/backoff) + human review → ~100 total
+- [x] hit@k, recall@k, MRR, nDCG@10 (page relevance, chunk ranks)
+- [ ] LLM-judge faithfulness/relevance; citation precision; refusal threshold calibration
+- [x] `rag eval [--config]` → `evals/results/<ts>.json` + Markdown table (first results in README)
+- [ ] fixes to measure: query rewriting, max chunks per page
 - [ ] CI subset gate (fail on >5pt recall drop)
 
 ### Phase 5 — API + UI + deploy (M)

@@ -2,6 +2,15 @@
 
 Newest first. Each entry: context, decision, consequences. Revisit when evals say otherwise.
 
+## 2026-10-10: Retrieval eval design (page relevance, chunk ranks, pooled corrections)
+- **Context**: need defensible numbers for every retrieval choice.
+- **Decision**: golden set lists relevant *pages*; metrics count *chunk* ranks with first-find
+  only; every run records corpus ref + fingerprint. Golden entries are extended only after
+  reading a retrieved page and confirming it answers the question.
+- **Consequence**: chunking experiments don't invalidate the golden set. First real result:
+  hybrid+rerank Hit@5 0.80, dense ≫ keyword, n = 25 so only large gaps are conclusive.
+  Reranking stays on for `rag ask`.
+
 ## 2026-10-10: OpenRouter free models as an alternative LLM backend
 - **Context**: owner wants to iterate without paying per call.
 - **Decision**: add `OpenAICompatibleGenerator` (OpenAI Chat Completions format via the `openai`

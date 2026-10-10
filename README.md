@@ -69,4 +69,18 @@ data/                raw corpus (gitignored)
 
 ## Results
 
-_Ablation table goes here once evals run._
+Retrieval on 25 hand-written questions (corpus `b2e60d8`, local `bge-small-en-v1.5`, reranker
+`ms-marco-MiniLM-L-6-v2`, 2026-10-10). Full method and caveats in
+[docs/06-evaluation.md](docs/06-evaluation.md).
+
+| Config | Hit@1 | Hit@5 | Recall@5 | MRR | nDCG@10 | p50 ms |
+|---|---:|---:|---:|---:|---:|---:|
+| dense | 0.520 | 0.600 | 0.467 | 0.576 | 0.502 | 8 |
+| keyword | 0.320 | 0.480 | 0.313 | 0.380 | 0.323 | 30 |
+| hybrid | 0.480 | 0.640 | 0.460 | 0.547 | 0.483 | 35 |
+| **hybrid+rerank** | 0.480 | **0.800** | **0.547** | **0.613** | **0.548** | 1281 |
+| hybrid, no generated | 0.520 | 0.680 | 0.547 | 0.562 | 0.519 | 27 |
+| hybrid+rerank, no generated | 0.520 | 0.760 | 0.547 | 0.603 | 0.530 | 1309 |
+
+With 25 questions one question = 0.04, so only large gaps are conclusive: dense ≫ keyword, and
+reranking lifts Hit@5 from 0.64 to 0.80. The golden set is being extended to ~100 questions.

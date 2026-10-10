@@ -67,6 +67,12 @@ the right chunk first.
 
 **Recall@k**: share of questions whose relevant source appears in the top k results.
 
+**Pooled judgments**: building relevance labels by reviewing what retrieval systems actually
+return and adding the truly relevant results (TREC practice). Fixes false negatives from an
+incomplete golden set.
+
+**Hit@k**: 1 if any relevant result appears in the top k, else 0; averaged over questions.
+
 **RRF (reciprocal rank fusion)**: merges ranked lists by summing `1 / (k + rank)`; needs no
 score calibration between systems.
 
