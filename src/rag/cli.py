@@ -22,6 +22,7 @@ from rag.evals.answers import (
 from rag.evals.drafting import draft_items, sample_chunks
 from rag.evals.golden import load_golden, unknown_sources
 from rag.evals.judge import load_unanswerable
+from rag.evals.review import pending_drafts, record_decision
 from rag.evals.runner import ABLATIONS, evaluate, to_markdown, write_results
 from rag.generate.answer import answer_question
 from rag.generate.generator import make_generator
@@ -245,6 +246,40 @@ def _llm_label(settings: Settings) -> str:
         case "openrouter":
             return f"openrouter:{settings.openrouter_model}"
     return settings.llm_backend
+
+
+@app.command("review-drafts")
+def review_drafts_cmd(
+    drafts: Annotated[Path, typer.Option(help="LLM drafts to review.")] = Path(
+        "evals/drafts.jsonl"
+    ),
+    golden: Annotated[Path, typer.Option(help="Golden set to append to.")] = Path(
+        "evals/golden.jsonl"
+    ),
+    reviewed: Annotated[Path, typer.Option(help="Decision ledger (enables resume).")] = Path(
+        "evals/drafts-reviewed.txt"
+    ),
+) -> None:
+    """Review drafted questions one by one: [y]es, [e]dit, [n]o, [q]uit (resumable)."""
+    pending = pending_drafts(drafts, reviewed)
+    counts = {"accepted": 0, "rejected": 0}
+    for position, row in enumerate(pending, start=1):
+        typer.secho(f"\n[{position}/{len(pending)}] {row['id']}", fg="cyan")
+        typer.secho(f"Q: {row['question']}", bold=True)
+        typer.echo(f"A: {row.get('reference_answer') or '-'}")
+        typer.echo(f"Source: {', '.join(row['relevant_sources'])}")
+        typer.echo(f"Tags: {', '.join(row.get('tags', []))}")
+        choice = typer.prompt("[y]es / [e]dit / [n]o / [q]uit", default="y").strip().lower()
+        if choice.startswith("q"):
+            break
+        edited = typer.prompt("New question") if choice.startswith("e") else None
+        decision = "rejected" if choice.startswith("n") else "accepted"
+        record_decision(row, decision, golden, reviewed, edited_question=edited)
+        counts[decision] += 1
+    left = len(pending_drafts(drafts, reviewed))
+    typer.secho(
+        f"{counts['accepted']} accepted, {counts['rejected']} rejected, {left} left.", fg="green"
+    )
 
 
 @app.command("draft-questions")
