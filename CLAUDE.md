@@ -31,7 +31,7 @@ uv run rag eval [--config NAME] [--limit N]   # retrieval metrics on evals/golde
 uv run rag eval-answers [--config NAME] [--judge-backend B]   # faithfulness, citations, refusal
 RAG_LLM_BACKEND=openrouter uv run rag draft-questions --n 100 --seed S   # resumable
 uv run rag review-drafts                      # human review: y/e/n/q, resumable, appends to golden
-uv run ruff format . && uv run ruff check .
+uv run ruff format . && uv run ruff check --no-cache .   # --no-cache: match CI exactly
 uv run pytest -m "not integration" --cov=rag   # unit tests
 uv run pytest -m integration                   # needs compose DB
 ```

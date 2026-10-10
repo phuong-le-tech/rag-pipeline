@@ -45,3 +45,7 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.ruff.lint.isort]
+# Explicit, so classification never depends on whether a module file exists yet.
+known-first-party = ["rag"]

@@ -1,10 +1,10 @@
 import json
 
-from rag.evals.review import pending_drafts, record_decision
 from typer.testing import CliRunner
 
 from rag import cli
 from rag.evals.golden import load_golden
+from rag.evals.review import pending_drafts, record_decision
 
 runner = CliRunner()
 
