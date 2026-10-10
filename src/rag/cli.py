@@ -13,7 +13,12 @@ from pgvector.psycopg import register_vector
 from rag.config import Settings
 from rag.db import connect, init_db
 from rag.embed import make_embedder
-from rag.evals.answers import answers_markdown, evaluate_answers, write_answer_results
+from rag.evals.answers import (
+    RetryingGenerator,
+    answers_markdown,
+    evaluate_answers,
+    write_answer_results,
+)
 from rag.evals.drafting import draft_items, sample_chunks
 from rag.evals.golden import load_golden, unknown_sources
 from rag.evals.judge import load_unanswerable
@@ -25,6 +30,7 @@ from rag.ingest.loaders import iter_documents
 from rag.ingest.pipeline import ingest
 from rag.retrieval.rerank import make_reranker
 from rag.retrieval.retriever import Retriever, RetrieverConfig
+from rag.retrieval.rewrite import QueryRewriter
 
 app = typer.Typer(help="RAG pipeline commands.", no_args_is_help=True)
 
@@ -137,11 +143,20 @@ def eval_cmd(
             raise typer.Exit(1)
         needs_reranker = any(ABLATIONS[n].rerank for n in names)
         reranker = make_reranker(settings) if needs_reranker else None
-        retriever = Retriever(conn, make_embedder(settings), reranker)
+        needs_rewriter = any(ABLATIONS[n].rewrite for n in names)
+        rewriter = (
+            QueryRewriter(RetryingGenerator(make_generator(settings))) if needs_rewriter else None
+        )
+        retriever = Retriever(conn, make_embedder(settings), reranker, rewriter)
         reports = []
-        for name in names:
-            typer.echo(f"Evaluating {name} on {len(items)} questions...", err=True)
-            reports.append(evaluate(retriever, items, ABLATIONS[name], name=name))
+        try:
+            for name in names:
+                typer.echo(f"Evaluating {name} on {len(items)} questions...", err=True)
+                reports.append(evaluate(retriever, items, ABLATIONS[name], name=name))
+        except (anthropic.AnthropicError, openai.OpenAIError) as exc:
+            typer.secho(f"LLM call failed (query rewriting): {exc}", fg="red", err=True)
+            typer.echo(llm_error_hint(exc, settings), err=True)
+            raise typer.Exit(1) from exc
 
     ref_file = corpus / "CORPUS_REF"
     meta = {

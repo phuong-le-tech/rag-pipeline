@@ -246,6 +246,51 @@ def test_eval_command_prints_table_and_writes_results(tmp_path, monkeypatch, tes
 
 
 @pytest.mark.integration
+def test_eval_supports_rewrite_configs(tmp_path, monkeypatch, test_database_url):
+    corpus = tmp_path / "corpus"
+    (corpus / "tasks").mkdir(parents=True)
+    (corpus / "tasks" / "rollback.md").write_text(
+        "---\ntitle: Rollback\n---\nUse kubectl rollout undo to revert a Deployment.\n"
+    )
+    golden = tmp_path / "golden.jsonl"
+    golden.write_text(
+        '{"id": "q1", "question": "revert a deployment", '
+        '"relevant_sources": ["tasks/rollback.md"], "origin": "human"}\n'
+    )
+    monkeypatch.setenv("RAG_DATABASE_URL", test_database_url)
+    monkeypatch.setenv("RAG_EMBEDDING_BACKEND", "fake")
+    monkeypatch.setenv("RAG_EMBEDDING_DIM", "8")
+    monkeypatch.setenv("RAG_LLM_BACKEND", "fake")
+    with psycopg.connect(test_database_url) as conn:
+        conn.execute("TRUNCATE documents RESTART IDENTITY CASCADE")
+    runner.invoke(cli.app, ["ingest", str(corpus)])
+
+    class StubReranker:
+        def rerank(self, query, hits):
+            return list(hits)
+
+    monkeypatch.setattr(cli, "make_reranker", lambda _s: StubReranker())
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "eval",
+            "--golden",
+            str(golden),
+            "--config",
+            "hybrid+rerank, rewrite",
+            "--out",
+            str(tmp_path / "r"),
+            "--corpus",
+            str(corpus),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "| hybrid+rerank, rewrite |" in result.output
+
+
+@pytest.mark.integration
 def test_eval_aborts_on_unknown_golden_sources(tmp_path, monkeypatch, test_database_url):
     golden = tmp_path / "golden.jsonl"
     golden.write_text(
