@@ -2,6 +2,16 @@
 
 Newest first. Each entry: context, decision, consequences. Revisit when evals say otherwise.
 
+## 2026-10-10: Keep generated reference pages, tag them, measure
+- **Context**: profiling showed generated reference (CLI flags, kubectl/kubeadm generated, API
+  definitions) is 25% of documents but 55% of chunks, mostly HTML tables.
+- **Decision**: convert HTML to text, keep every page, set `Document.generated` from
+  `auto_generated: true` frontmatter or a `generated/` path segment.
+- **Consequence**: flag and API questions stay answerable; Phase 4 adds an ablation row
+  "without generated pages" to prove whether they help or crowd results.
+- **Open issue**: 3,066 tiny generated chunks (one-line API field sections). Candidate fix:
+  merge sections shorter than N chars into their parent. Measure first.
+
 ## 2026-10-10: Drop `code_sample` shortcodes during cleaning
 - **Context**: k8s pages embed YAML examples via `{{% code_sample file="…" %}}`; the files live
   outside `content/en/docs`.

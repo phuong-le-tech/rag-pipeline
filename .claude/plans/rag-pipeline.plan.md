@@ -29,8 +29,9 @@ ablation table is the centrepiece of the README.
 ## Phases
 
 ### Phase 1 — Corpus + ingestion (M)
-- [ ] `scripts/fetch_corpus.sh`: sparse clone, pinned tag, into `data/`
-- [ ] `ingest/loaders.py`: frontmatter (title, weight), strip Hugo shortcodes → `Document(source, url, title, section, text)`
+- [x] `scripts/fetch_corpus.sh`: sparse clone into `data/`, SHA recorded in `CORPUS_REF`
+- [x] `ingest/loaders.py`: frontmatter, shortcodes, HTML→text, `generated` flag → `Document`
+- [x] Corpus profiled: 1,652 docs, 17,863 chunks; generated = 55% of chunks (kept, tagged)
 - [ ] `embed/`: `Embedder` protocol; `OpenAIEmbedder` (batch, retry), `FakeEmbedder` (tests)
 - [ ] `ingest/pipeline.py`: incremental by `content_hash`, delete vanished docs, one transaction per doc
 - [ ] CLI `rag ingest <path>`: added/updated/skipped/deleted counts

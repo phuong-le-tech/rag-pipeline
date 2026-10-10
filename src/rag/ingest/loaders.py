@@ -7,6 +7,7 @@ heading path starts with it.
 """
 
 import hashlib
+import html
 import re
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -27,6 +28,24 @@ SHORTCODE_RE = re.compile(r"{{[<%].*?[>%]}}", re.DOTALL)
 COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 BLANK_RUN_RE = re.compile(r"\n{3,}")
 
+# HTML -> text. Only known tag names are touched, so placeholders like <pod-name> survive.
+CELL = "\x1f"
+HTML_RULES: tuple[tuple[re.Pattern[str], str], ...] = tuple(
+    (re.compile(pattern, re.IGNORECASE | re.DOTALL), repl)
+    for pattern, repl in (
+        (r"<(code|tt)\b[^>]*>(.*?)</\1>", r"`\2`"),
+        (r"<(?:br|hr)\s*/?>", "\n"),
+        (r"<tr\b[^>]*>", "\n"),
+        (r"</tr>", ""),
+        (r"</?t[dh]\b[^>]*>", CELL),
+        (r"<li\b[^>]*>", "\n- "),
+        (r"</li>", ""),
+        (r"</?(?:table|thead|tbody|tfoot|p|div|ul|ol|h[1-6]|blockquote)\b[^>]*>", "\n"),
+        (r"</?(?:em|i|strong|b|a|span|sup|sub|small|u|caption|colgroup|col|label)\b[^>]*>", ""),
+    )
+)
+GENERATED_DIR = "generated"
+
 
 @dataclass(frozen=True)
 class Document:
@@ -36,6 +55,7 @@ class Document:
     section: str
     text: str
     content_hash: str
+    generated: bool
 
 
 def _admonition(match: re.Match[str]) -> str:
@@ -43,10 +63,24 @@ def _admonition(match: re.Match[str]) -> str:
     return f"**{match.group(1).capitalize()}:** {content}" if content else ""
 
 
+def _join_cells(line: str) -> str:
+    if CELL not in line:
+        return line.rstrip()
+    return " | ".join(cell.strip() for cell in line.split(CELL) if cell.strip())
+
+
+def html_to_text(text: str) -> str:
+    for pattern, repl in HTML_RULES:
+        text = pattern.sub(repl, text)
+    text = html.unescape(text)
+    return "\n".join(_join_cells(line) for line in text.split("\n"))
+
+
 def clean_hugo(text: str) -> str:
     text = COMMENT_RE.sub("", text)
     text = ADMONITION_RE.sub(_admonition, text)
     text = SHORTCODE_RE.sub("", text)
+    text = html_to_text(text)
     return BLANK_RUN_RE.sub("\n\n", text).strip()
 
 
@@ -88,6 +122,7 @@ def load_markdown_file(path: Path, root: Path, base_url: str = DOCS_BASE_URL) ->
         section=rel.parts[0] if len(rel.parts) > 1 else "",
         text=f"# {title}\n\n{cleaned}",
         content_hash=hashlib.sha256(raw.encode("utf-8")).hexdigest(),
+        generated=meta.get("auto_generated") is True or GENERATED_DIR in rel.parts[:-1],
     )
 
 

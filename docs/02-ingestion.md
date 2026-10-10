@@ -75,6 +75,33 @@ Cleaning rules (`clean_hugo`):
   They are template calls, not prose. Known loss: `code_sample` pulls in YAML examples we
   currently drop. Logged in the [decision log](decisions.md).
 - Drafts and pages that are empty after cleaning → skipped.
+- HTML (`html_to_text`) → readable text. Table rows become lines with cells joined by ` | `,
+  `<code>`/`<tt>` become backticks, block tags become line breaks, inline tags are dropped,
+  entities are decoded (`&amp;` → `&`). Only *known* tag names are touched, so placeholders
+  such as `<pod-name>` in commands survive.
+- Every document gets `generated = True` when its frontmatter says `auto_generated: true`
+  **or** it sits in a `generated/` folder (the frontmatter flag alone misses kubeadm's pages).
+
+### What the real corpus looked like (profiled 2026-10-10, ref `b2e60d8`)
+
+Profiling before indexing paid off immediately:
+
+| | Docs | Chunks | Median chunk | Chunks < 100 chars |
+|---|---|---|---|---|
+| Hand-written | 1,236 | 8,072 | 658 chars | 397 |
+| Generated reference | 416 | 9,791 | 432 chars | 3,066 |
+| **All** | 1,652 | 17,863 | 581 chars | 3,463 |
+
+- 70% of the *files* sit under `reference/`, and generated pages produce **55% of all chunks**
+  from 25% of the documents. Left unchecked they would crowd search results with flag tables.
+- Before HTML cleanup the corpus contained ~55,000 `<td>` cells. Embedding that markup would
+  have made vectors partly "about HTML".
+- Generated pages produce most of the tiny chunks: API reference pages put a heading on every
+  field, so sections are one line long.
+
+We **keep** generated pages but tag them, so Phase 4 can measure retrieval with and without
+them. See the [decision log](decisions.md). The lesson generalises: always profile a corpus
+(counts, length distribution, leftover markup) before you embed it.
 
 ### Chunker: [`src/rag/ingest/chunking.py`](../src/rag/ingest/chunking.py)
 

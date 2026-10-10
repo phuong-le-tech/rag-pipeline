@@ -57,6 +57,65 @@ def test_clean_hugo_collapses_blank_runs():
     assert clean_hugo("a\n\n\n\n\nb") == "a\n\nb"
 
 
+FLAG_TABLE = """<table style="width: 100%;">
+<tbody>
+<tr>
+<td colspan="2">--admission-control strings</td>
+</tr>
+<tr>
+<td></td><td style="line-height: 130%;"><p>File with admission control configuration.</p></td>
+</tr>
+</tbody>
+</table>"""
+
+
+def test_clean_hugo_turns_flag_table_into_lines():
+    assert clean_hugo(FLAG_TABLE) == (
+        "--admission-control strings\n\nFile with admission control configuration."
+    )
+
+
+def test_clean_hugo_handles_label_hr_and_tt():
+    text = "<label>Field</label> uses <tt>spec.replicas</tt>\n<hr>\nNext"
+
+    assert clean_hugo(text) == "Field uses `spec.replicas`\n\nNext"
+
+
+def test_clean_hugo_joins_table_cells_with_pipes():
+    text = (
+        "<table><tr><th>Field</th><th>Type</th></tr><tr><td>name</td><td>string</td></tr></table>"
+    )
+
+    assert clean_hugo(text) == "Field | Type\nname | string"
+
+
+def test_clean_hugo_strips_inline_tags_keeps_code_and_decodes_entities():
+    text = 'Use <code>kubectl get</code> on <em>all</em> <a href="/x">nodes</a> &amp; pods.'
+
+    assert clean_hugo(text) == "Use `kubectl get` on all nodes & pods."
+
+
+def test_clean_hugo_leaves_angle_bracket_placeholders_alone():
+    text = "Run `kubectl describe pod <pod-name>` to inspect it."
+
+    assert clean_hugo(text) == text
+
+
+@pytest.mark.parametrize(
+    ("rel", "frontmatter", "expected"),
+    [
+        ("reference/kubernetes-api/pod-v1.md", "auto_generated: true\n", True),
+        ("reference/setup-tools/kubeadm/generated/kubeadm_init.md", "", True),
+        ("concepts/workloads/pods.md", "", False),
+        ("reference/glossary/pod.md", "auto_generated: false\n", False),
+    ],
+)
+def test_generated_flag_from_frontmatter_or_path(tmp_path, rel, frontmatter, expected):
+    path = write(tmp_path, rel, f"---\ntitle: X\n{frontmatter}---\nBody.\n")
+
+    assert load_markdown_file(path, root=tmp_path).generated is expected
+
+
 def test_load_markdown_file_builds_document_with_metadata(tmp_path):
     path = write(tmp_path, "concepts/workloads/deployment.md", DEPLOYMENT_MD)
 
@@ -69,6 +128,7 @@ def test_load_markdown_file_builds_document_with_metadata(tmp_path):
         section="concepts",
         text=doc.text,
         content_hash=hashlib.sha256(DEPLOYMENT_MD.encode()).hexdigest(),
+        generated=False,
     )
     assert doc.text.startswith("# Deployments\n\nA _Deployment_ provides")
     assert "## Creating a Deployment" in doc.text
