@@ -1,4 +1,5 @@
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
 
@@ -11,6 +12,8 @@ from pgvector.psycopg import register_vector
 from rag.config import Settings
 from rag.db import connect, init_db
 from rag.embed import make_embedder
+from rag.evals.golden import load_golden, unknown_sources
+from rag.evals.runner import ABLATIONS, evaluate, to_markdown, write_results
 from rag.generate.answer import answer_question
 from rag.generate.generator import make_generator
 from rag.ingest.chunking import chunk_markdown
@@ -90,6 +93,59 @@ def ask_cmd(
         for source in result.sources:
             hit = source.hit
             typer.echo(f"[{source.number}] {hit.heading or hit.title}\n    {hit.url}")
+
+
+@app.command("eval")
+def eval_cmd(
+    golden: Annotated[Path, typer.Option(help="Golden set (JSONL).")] = Path("evals/golden.jsonl"),
+    config: Annotated[
+        list[str] | None, typer.Option("--config", help="Ablation name (repeatable). Default: all.")
+    ] = None,
+    limit: Annotated[int | None, typer.Option(help="Only the first N questions.")] = None,
+    out: Annotated[Path, typer.Option(help="Results directory.")] = Path("evals/results"),
+    corpus: Annotated[Path, typer.Option(help="Corpus root (for CORPUS_REF).")] = Path(
+        "data/k8s-docs"
+    ),
+) -> None:
+    """Score retrieval configs on the golden set: hit@k, recall@k, MRR, nDCG@10, latency."""
+    names = config or list(ABLATIONS)
+    unknown = [n for n in names if n not in ABLATIONS]
+    if unknown:
+        raise typer.BadParameter(f"unknown config {unknown}; choose from {list(ABLATIONS)}")
+    items = load_golden(golden)[:limit]
+    settings = Settings()
+    try:
+        conn = connect(settings)
+    except psycopg.OperationalError as exc:
+        raise _database_unreachable(exc) from exc
+
+    with conn:
+        register_vector(conn)
+        known = {row[0] for row in conn.execute("SELECT source FROM documents")}
+        missing = unknown_sources(items, known)
+        if missing:
+            typer.secho(f"Golden sources not in the index: {missing}", fg="red", err=True)
+            raise typer.Exit(1)
+        needs_reranker = any(ABLATIONS[n].rerank for n in names)
+        reranker = make_reranker(settings) if needs_reranker else None
+        retriever = Retriever(conn, make_embedder(settings), reranker)
+        reports = []
+        for name in names:
+            typer.echo(f"Evaluating {name} on {len(items)} questions...", err=True)
+            reports.append(evaluate(retriever, items, ABLATIONS[name], name=name))
+
+    ref_file = corpus / "CORPUS_REF"
+    meta = {
+        "timestamp": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "corpus_ref": ref_file.read_text().strip() if ref_file.exists() else "unknown",
+        "fingerprint": settings.pipeline_fingerprint(),
+        "reranker_model": settings.reranker_model,
+        "n_questions": len(items),
+        "golden": str(golden),
+    }
+    typer.echo(to_markdown(reports))
+    path = write_results(out, reports, meta)
+    typer.secho(f"Saved {path}", fg="green")
 
 
 @app.command("init-db")

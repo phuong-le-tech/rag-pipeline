@@ -1,3 +1,4 @@
+import json
 from dataclasses import replace
 
 import httpx
@@ -181,6 +182,76 @@ def test_llm_error_hint_rate_limit_suggests_switching_openrouter_model():
     )
 
     assert "RAG_OPENROUTER_MODEL" in hint
+
+
+@pytest.mark.integration
+def test_eval_command_prints_table_and_writes_results(tmp_path, monkeypatch, test_database_url):
+    corpus = tmp_path / "corpus"
+    (corpus / "tasks").mkdir(parents=True)
+    (corpus / "tasks" / "rollback.md").write_text(
+        "---\ntitle: Rollback\n---\nUse kubectl rollout undo to revert a Deployment.\n"
+    )
+    (corpus / "CORPUS_REF").write_text("deadbeef\n")
+    golden = tmp_path / "golden.jsonl"
+    golden.write_text(
+        '{"id": "q1", "question": "revert a deployment", '
+        '"relevant_sources": ["tasks/rollback.md"], "origin": "human"}\n'
+    )
+    monkeypatch.setenv("RAG_DATABASE_URL", test_database_url)
+    monkeypatch.setenv("RAG_EMBEDDING_BACKEND", "fake")
+    monkeypatch.setenv("RAG_EMBEDDING_DIM", "8")
+    with psycopg.connect(test_database_url) as conn:
+        conn.execute("TRUNCATE documents RESTART IDENTITY CASCADE")
+    runner.invoke(cli.app, ["ingest", str(corpus)])
+    out = tmp_path / "results"
+
+    result = runner.invoke(
+        cli.app,
+        [
+            "eval",
+            "--golden",
+            str(golden),
+            "--config",
+            "keyword",
+            "--config",
+            "dense",
+            "--out",
+            str(out),
+            "--corpus",
+            str(corpus),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "| keyword |" in result.output and "| dense |" in result.output
+    (saved,) = out.glob("*.json")
+    meta = json.loads(saved.read_text())["meta"]
+    assert meta["corpus_ref"] == "deadbeef"
+    assert meta["n_questions"] == 1
+    assert meta["fingerprint"].startswith("fake:fake:8")
+
+
+@pytest.mark.integration
+def test_eval_aborts_on_unknown_golden_sources(tmp_path, monkeypatch, test_database_url):
+    golden = tmp_path / "golden.jsonl"
+    golden.write_text(
+        '{"id": "q1", "question": "x", "relevant_sources": ["nope.md"], "origin": "human"}\n'
+    )
+    monkeypatch.setenv("RAG_DATABASE_URL", test_database_url)
+    monkeypatch.setenv("RAG_EMBEDDING_BACKEND", "fake")
+    monkeypatch.setenv("RAG_EMBEDDING_DIM", "8")
+
+    result = runner.invoke(cli.app, ["eval", "--golden", str(golden), "--out", str(tmp_path)])
+
+    assert result.exit_code == 1
+    assert "nope.md" in result.output
+
+
+def test_eval_rejects_unknown_config_name(tmp_path):
+    result = runner.invoke(cli.app, ["eval", "--config", "magic", "--out", str(tmp_path)])
+
+    assert result.exit_code == 2
+    assert "magic" in result.output
 
 
 def test_search_rejects_unknown_mode(monkeypatch):
