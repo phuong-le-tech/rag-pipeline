@@ -12,6 +12,7 @@ from rag.embed import make_embedder
 from rag.ingest.chunking import chunk_markdown
 from rag.ingest.loaders import iter_documents
 from rag.ingest.pipeline import ingest
+from rag.retrieval.retriever import Retriever, RetrieverConfig
 
 app = typer.Typer(help="RAG pipeline commands.", no_args_is_help=True)
 
@@ -80,6 +81,39 @@ def ingest_cmd(
         f"deleted {stats.deleted} ({stats.chunks} chunks) in {elapsed:.1f}s",
         fg="green",
     )
+
+
+@app.command("search")
+def search_cmd(
+    query: Annotated[str, typer.Argument(help="Natural-language question or keywords.")],
+    mode: Annotated[str, typer.Option(help="dense | keyword | hybrid")] = "hybrid",
+    k: Annotated[int, typer.Option("-k", help="Number of results.")] = 5,
+    generated: Annotated[bool, typer.Option(help="Include auto-generated reference pages.")] = True,
+) -> None:
+    """Search the index and print ranked chunks (no LLM involved)."""
+    try:
+        config = RetrieverConfig(mode=mode, k=k, candidates=max(50, k), include_generated=generated)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    settings = Settings()
+    try:
+        conn = connect(settings)
+    except psycopg.OperationalError as exc:
+        raise _database_unreachable(exc) from exc
+    with conn:
+        register_vector(conn)
+        hits = Retriever(conn, make_embedder(settings)).retrieve(query, config)
+
+    if not hits:
+        typer.secho("No results.", fg="yellow")
+        return
+    for rank, hit in enumerate(hits, start=1):
+        snippet = hit.content[:PREVIEW_CHARS].replace("\n", " ")
+        tag = " [generated]" if hit.generated else ""
+        typer.secho(f"{rank}. {hit.score:.4f}  {hit.heading or hit.title}{tag}", bold=True)
+        typer.echo(f"   {hit.url}")
+        typer.echo(f"   {snippet}")
 
 
 @app.command("chunk")

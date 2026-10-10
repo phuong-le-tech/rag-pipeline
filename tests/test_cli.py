@@ -76,6 +76,36 @@ def test_ingest_command_indexes_then_skips(tmp_path, monkeypatch, test_database_
     assert "added 0, updated 0, skipped 1, deleted 0 (0 chunks)" in second.output
 
 
+@pytest.mark.integration
+def test_search_command_prints_ranked_hits(tmp_path, monkeypatch, test_database_url):
+    (tmp_path / "tasks").mkdir()
+    (tmp_path / "tasks" / "rollback.md").write_text(
+        "---\ntitle: Rollback\n---\nUse kubectl rollout undo to revert a Deployment.\n"
+    )
+    monkeypatch.setenv("RAG_DATABASE_URL", test_database_url)
+    monkeypatch.setenv("RAG_EMBEDDING_BACKEND", "fake")
+    monkeypatch.setenv("RAG_EMBEDDING_DIM", "8")
+    with psycopg.connect(test_database_url) as conn:
+        conn.execute("TRUNCATE documents RESTART IDENTITY CASCADE")
+    runner.invoke(cli.app, ["ingest", str(tmp_path)])
+
+    result = runner.invoke(cli.app, ["search", "reverting", "--mode", "keyword", "-k", "3"])
+
+    assert result.exit_code == 0, result.output
+    assert "1. " in result.output
+    assert "Rollback" in result.output
+    assert "https://kubernetes.io/docs/tasks/rollback/" in result.output
+
+
+def test_search_rejects_unknown_mode(monkeypatch):
+    monkeypatch.setenv("RAG_EMBEDDING_BACKEND", "fake")
+
+    result = runner.invoke(cli.app, ["search", "anything", "--mode", "magic"])
+
+    assert result.exit_code == 2
+    assert "mode" in result.output
+
+
 def test_ingest_reports_unreachable_database(tmp_path, monkeypatch):
     (tmp_path / "one.md").write_text("---\ntitle: One\n---\nalpha\n")
     monkeypatch.setenv("RAG_EMBEDDING_BACKEND", "fake")
