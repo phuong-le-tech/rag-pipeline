@@ -1,0 +1,44 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: rag
+          POSTGRES_PASSWORD: rag
+          POSTGRES_DB: rag
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U rag"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      # Tests use fake embedders/LLMs: no API keys, no model downloads.
+      RAG_TEST_ADMIN_URL: postgresql://rag:rag@localhost:5433/rag
+      RAG_TEST_DATABASE_URL: postgresql://rag:rag@localhost:5433/rag_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Install
+        run: uv sync --frozen
+      - name: Lint
+        run: |
+          uv run ruff format --check .
+          uv run ruff check .
+      - name: Unit tests
+        run: uv run pytest -m "not integration" --cov=rag --cov-report=term
+      - name: Integration tests (Postgres + pgvector)
+        run: uv run pytest -m integration
