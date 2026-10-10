@@ -71,6 +71,26 @@ Tags let us slice results by question type:
 `origin: human` vs `llm` exists because LLM-drafted questions tend to reuse the passage's own
 words, which flatters retrieval. They must be reported separately.
 
+### Growing the golden set: draft with an LLM, review by hand
+
+```bash
+RAG_LLM_BACKEND=openrouter uv run rag draft-questions --n 100 --seed golden-v2
+uv run rag review-drafts        # y = accept, e = edit question, n = reject, q = quit
+```
+
+1. **Sample**: one chunk per page, deterministic for a given seed, 15% from generated pages,
+   chunks under 300 characters skipped.
+2. **Draft**: the LLM writes one question a real user would ask that the chunk answers, in the
+   user's words, plus a short reference answer, or `{"skip": true}` for boilerplate.
+3. **Flag**: drafts whose content words mostly appear in the passage get the tag
+   `high-overlap`. They make retrieval look easier than it is; rewrite or reject them.
+4. **Review**: every draft is shown with its answer and source page. Accepted drafts are
+   appended to `golden.jsonl` with the tags `reviewed` (and `edited` if you rewrote the
+   question). Decisions go to `evals/drafts-reviewed.txt`, so a review can stop and resume.
+
+An unreviewed LLM question never enters the golden set: the person reviewing is the quality
+gate.
+
 ## Results (2026-10-10, corpus `b2e60d8`, `local:BAAI/bge-small-en-v1.5:384:1500:loader2`, reranker MiniLM-L-6, 25 questions)
 
 | Config | Hit@1 | Hit@5 | Recall@5 | MRR | nDCG@10 | p50 ms |
