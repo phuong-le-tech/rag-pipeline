@@ -18,8 +18,9 @@ class Settings(BaseSettings):
     embedding_dim: int = Field(default=384, gt=0, le=16000)
     local_embedding_model: str = "BAAI/bge-small-en-v1.5"
     openai_embedding_model: str = "text-embedding-3-small"
-    # CPU threads for the local model; None lets ONNX Runtime decide (can oversubscribe).
+    # CPU threads for local models; None lets ONNX Runtime decide (can oversubscribe).
     embedding_threads: int | None = Field(default=None, gt=0)
+    reranker_model: str = "Xenova/ms-marco-MiniLM-L-6-v2"
 
     def embedding_model_name(self) -> str:
         return {

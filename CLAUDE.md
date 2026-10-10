@@ -44,7 +44,8 @@ uv run pytest -m integration                   # needs compose DB
 - `src/rag/ingest/pipeline.py`: incremental ingest; skip when `(content_hash, fingerprint)`
   matches; one transaction per doc; prunes docs missing from disk
 - `src/rag/retrieval/`: `search.py` (dense via pgvector, keyword via FTS with OR semantics),
-  `fusion.py` (`rrf`), `retriever.py` (`Retriever` + `RetrieverConfig` switches = ablation rows)
+  `fusion.py` (`rrf`), `rerank.py` (cross-encoder, `RAG_RERANKER_MODEL`, MiniLM default),
+  `retriever.py` (`Retriever` + `RetrieverConfig` switches = ablation rows, incl. `rerank`)
 - `src/rag/cli.py`: typer app, entry point `rag` (`init-db`, `chunk`, `ingest`, `search`)
 - **Changing cleaning output? Bump `LOADER_VERSION` in `ingest/loaders.py`**, or incremental
   ingest will skip every doc (raw-file hashes don't change) and keep stale vectors.

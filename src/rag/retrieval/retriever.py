@@ -11,6 +11,7 @@ import psycopg
 
 from rag.embed import Embedder
 from rag.retrieval.fusion import DEFAULT_K, rrf
+from rag.retrieval.rerank import Reranker
 from rag.retrieval.search import Hit, dense_search, keyword_search
 
 Mode = Literal["dense", "keyword", "hybrid"]
@@ -23,6 +24,7 @@ class RetrieverConfig:
     candidates: int = 50  # results fetched from each first-stage search
     include_generated: bool = True
     rrf_k: int = DEFAULT_K
+    rerank: bool = False  # cross-encoder re-scores all candidates, then keeps top k
 
     def __post_init__(self) -> None:
         if self.mode not in get_args(Mode):
@@ -34,9 +36,12 @@ class RetrieverConfig:
 
 
 class Retriever:
-    def __init__(self, conn: psycopg.Connection, embedder: Embedder) -> None:
+    def __init__(
+        self, conn: psycopg.Connection, embedder: Embedder, reranker: Reranker | None = None
+    ) -> None:
         self.conn = conn
         self.embedder = embedder
+        self.reranker = reranker
 
     def _ranked_lists(self, query: str, config: RetrieverConfig) -> list[list[Hit]]:
         lists = []
@@ -51,12 +56,20 @@ class Retriever:
             )
         return lists
 
+    def _first_stage(self, query: str, config: RetrieverConfig, limit: int) -> list[Hit]:
+        lists = self._ranked_lists(query, config)
+        if config.mode != "hybrid":
+            return lists[0][:limit]
+        by_id = {hit.chunk_id: hit for hits in lists for hit in hits}
+        fused = rrf([[h.chunk_id for h in hits] for hits in lists], config.rrf_k, limit)
+        return [replace(by_id[chunk_id], score=score) for chunk_id, score in fused]
+
     def retrieve(self, query: str, config: RetrieverConfig) -> list[Hit]:
         if not query.strip():
             raise ValueError("query must not be blank")
-        lists = self._ranked_lists(query, config)
-        if config.mode != "hybrid":
-            return lists[0][: config.k]
-        by_id = {hit.chunk_id: hit for hits in lists for hit in hits}
-        fused = rrf([[h.chunk_id for h in hits] for hits in lists], config.rrf_k, config.k)
-        return [replace(by_id[chunk_id], score=score) for chunk_id, score in fused]
+        if not config.rerank:
+            return self._first_stage(query, config, config.k)
+        if self.reranker is None:
+            raise ValueError("config.rerank is set but the Retriever has no reranker")
+        candidates = self._first_stage(query, config, config.candidates)
+        return self.reranker.rerank(query, candidates)[: config.k]

@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 import psycopg
 import pytest
 from typer.testing import CliRunner
@@ -98,6 +100,35 @@ def test_search_command_prints_ranked_hits(tmp_path, monkeypatch, test_database_
     assert "1. " in result.output
     assert "Rollback" in result.output
     assert "https://kubernetes.io/docs/tasks/rollback/" in result.output
+
+
+@pytest.mark.integration
+def test_search_rerank_flag_uses_reranker(tmp_path, monkeypatch, test_database_url):
+    (tmp_path / "a").mkdir()
+    (tmp_path / "a" / "x.md").write_text("---\ntitle: X\n---\nrollback steps\n")
+    (tmp_path / "a" / "y.md").write_text("---\ntitle: Y\n---\nrollback rollback rollback\n")
+    monkeypatch.setenv("RAG_DATABASE_URL", test_database_url)
+    monkeypatch.setenv("RAG_EMBEDDING_BACKEND", "fake")
+    monkeypatch.setenv("RAG_EMBEDDING_DIM", "8")
+    with psycopg.connect(test_database_url) as conn:
+        conn.execute("TRUNCATE documents RESTART IDENTITY CASCADE")
+    runner.invoke(cli.app, ["ingest", str(tmp_path)])
+
+    class ReverseReranker:
+        def rerank(self, query, hits):
+            return [replace(h, score=-i) for i, h in enumerate(reversed(hits))]
+
+    monkeypatch.setattr(cli, "make_reranker", lambda _settings: ReverseReranker())
+
+    plain = runner.invoke(cli.app, ["search", "rollback", "--mode", "keyword", "-k", "2"])
+    reranked = runner.invoke(
+        cli.app, ["search", "rollback", "--mode", "keyword", "-k", "2", "--rerank"]
+    )
+
+    assert reranked.exit_code == 0, reranked.output
+    first = [line for line in plain.output.splitlines() if line.startswith("1. ")][0]
+    first_reranked = [line for line in reranked.output.splitlines() if line.startswith("1. ")][0]
+    assert first.split()[-1] != first_reranked.split()[-1]
 
 
 def test_search_rejects_unknown_mode(monkeypatch):

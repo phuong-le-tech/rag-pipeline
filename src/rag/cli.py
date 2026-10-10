@@ -12,6 +12,7 @@ from rag.embed import make_embedder
 from rag.ingest.chunking import chunk_markdown
 from rag.ingest.loaders import iter_documents
 from rag.ingest.pipeline import ingest
+from rag.retrieval.rerank import make_reranker
 from rag.retrieval.retriever import Retriever, RetrieverConfig
 
 app = typer.Typer(help="RAG pipeline commands.", no_args_is_help=True)
@@ -89,10 +90,19 @@ def search_cmd(
     mode: Annotated[str, typer.Option(help="dense | keyword | hybrid")] = "hybrid",
     k: Annotated[int, typer.Option("-k", help="Number of results.")] = 5,
     generated: Annotated[bool, typer.Option(help="Include auto-generated reference pages.")] = True,
+    rerank: Annotated[
+        bool, typer.Option(help="Re-score candidates with the local cross-encoder.")
+    ] = False,
 ) -> None:
     """Search the index and print ranked chunks (no LLM involved)."""
     try:
-        config = RetrieverConfig(mode=mode, k=k, candidates=max(50, k), include_generated=generated)
+        config = RetrieverConfig(
+            mode=mode,
+            k=k,
+            candidates=max(50, k),
+            include_generated=generated,
+            rerank=rerank,
+        )
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
 
@@ -103,7 +113,8 @@ def search_cmd(
         raise _database_unreachable(exc) from exc
     with conn:
         register_vector(conn)
-        hits = Retriever(conn, make_embedder(settings)).retrieve(query, config)
+        reranker = make_reranker(settings) if rerank else None
+        hits = Retriever(conn, make_embedder(settings), reranker).retrieve(query, config)
 
     if not hits:
         typer.secho("No results.", fg="yellow")

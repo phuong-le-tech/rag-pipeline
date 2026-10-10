@@ -41,7 +41,7 @@ ablation table is the centrepiece of the README.
 ### Phase 2 — Retrieval (M)
 - [x] dense (cosine, ef_search + iterative scan), keyword (OR tsquery + `ts_rank_cd`)
 - [x] `fusion.py` RRF (k=60), pure + unit-tested
-- [ ] `Reranker` protocol: cross-encoder (fastembed `bge-reranker-v2-m3`, no torch) + passthrough
+- [x] `Reranker` protocol: cross-encoder via fastembed (MiniLM-L-6 default, bge-v2-m3 configurable); `rag search --rerank`
 - [x] `RetrieverConfig(mode, k, candidates, include_generated, rrf_k)`; CLI `rag search`
 - [x] Fixed heading-anchor noise; `LOADER_VERSION` in fingerprint; full re-ingest running
 

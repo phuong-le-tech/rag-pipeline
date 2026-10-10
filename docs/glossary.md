@@ -10,6 +10,9 @@ asymmetric; OpenAI's embedding models are symmetric.
 **BM25**: classic keyword ranking formula: term frequency, inverse document frequency, length
 normalisation. Postgres full-text ranking is BM25-like.
 
+**Bi-encoder**: model that embeds query and passage separately and compares the vectors
+(what embedding search does). Fast, precomputable, shallower than a cross-encoder.
+
 **Chunk**: a passage of a document; the unit that is embedded, retrieved and cited.
 
 **Contextual chunk header**: prepending the document title / heading path to a chunk before

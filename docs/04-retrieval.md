@@ -1,7 +1,6 @@
 # 4. Retrieval: dense, keyword, hybrid
 
-> Status: dense, keyword and hybrid (RRF) work end to end via `rag search`. The reranker lands
-> next in Phase 2.
+> Status: dense, keyword, hybrid (RRF) and cross-encoder reranking all work via `rag search`.
 
 ## Concept
 
@@ -114,6 +113,35 @@ What this shows:
 
 Single anecdotes are not evidence. Phase 4 replaces them with recall@k over a golden set.
 
+## Stage 2: reranking with a cross-encoder ([`rerank.py`](../src/rag/retrieval/rerank.py))
+
+An embedding model is a **bi-encoder**: it encodes the query and each chunk *separately*, then
+compares vectors. That's fast (chunk vectors are precomputed) but shallow, because the two texts
+never see each other. A **cross-encoder** feeds `query + chunk` through the model *together*
+and outputs one relevance score. Every word of the question can attend to every word of the
+passage, so it judges actual relevance, not just topic similarity. It's much more accurate but
+must run once per pair at query time, so it is only affordable on a short list.
+
+```
+first stage (hybrid) ──► 50 candidates ──► cross-encoder scores 50 pairs ──► keep top k
+```
+
+`RetrieverConfig(rerank=True)` switches it on. The first stage then returns `candidates`
+results instead of `k`, and the reranker re-scores all of them. Model:
+`Xenova/ms-marco-MiniLM-L-6-v2` (80 MB, local via fastembed). Reranker scores are logits on
+their own scale; only their order matters.
+
+Measured on 2026-10-10 (Apple M4, CPU shared with a running ingest):
+
+| Query | Hybrid #1 | Hybrid + rerank #1 | Latency (warm) |
+|---|---|---|---|
+| "how do I see which pods are using the most CPU" | Pod-level resource managers ✗ | **kubectl top pod** ✓ | – |
+| "how do I roll back a deployment" | Rolling Back a Deployment ✓ | Rolling Back a Deployment ✓ | 35 ms → 3,700 ms |
+
+The reranker fixed the query hybrid got wrong and kept the one it got right, at ~100× the
+latency. Is that worth it? Two anecdotes can't say. Phase 4 measures recall and MRR with and
+without it, and `candidates` (50 → 20) is the obvious latency knob.
+
 ## Trade-offs
 
 - OR keyword semantics: high recall, noisy precision. Fine as a first stage feeding a reranker;
@@ -131,6 +159,7 @@ uv run rag search "how do I roll back a deployment" --mode dense
 uv run rag search "how do I roll back a deployment"            # hybrid
 uv run rag search "--dry-run flag" --mode dense                 # exact flag: who wins?
 uv run rag search "which pods use most CPU" --no-generated      # without generated pages
+uv run rag search "which pods use most CPU" --rerank            # second stage on
 ```
 
 For each query, ask: which mode found the right page, at which rank, and why?

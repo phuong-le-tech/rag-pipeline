@@ -2,6 +2,14 @@
 
 Newest first. Each entry: context, decision, consequences. Revisit when evals say otherwise.
 
+## 2026-10-10: MiniLM-L-6 cross-encoder as default reranker (not bge-reranker-v2-m3)
+- **Context**: the plan named `bge-reranker-v2-m3` (2.3 GB, ~570 MB int8). On this CPU the
+  small MiniLM already costs ~3.7 s per query for 50 candidates.
+- **Decision**: default `RAG_RERANKER_MODEL=Xenova/ms-marco-MiniLM-L-6-v2` via fastembed (no
+  torch); bge-v2-m3 stays one setting away.
+- **Consequence**: reranking is usable interactively; Phase 4 compares no-rerank / MiniLM /
+  bge-v2-m3 on quality vs. latency before anything is called "better".
+
 ## 2026-10-10: Loader version in the pipeline fingerprint
 - **Context**: fixing heading anchors changed cleaned text but not raw files, so content hashes
   matched and incremental ingest would have skipped every document.
