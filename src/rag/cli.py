@@ -1,3 +1,4 @@
+import json
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -12,6 +13,7 @@ from pgvector.psycopg import register_vector
 from rag.config import Settings
 from rag.db import connect, init_db
 from rag.embed import make_embedder
+from rag.evals.drafting import draft_items, sample_chunks
 from rag.evals.golden import load_golden, unknown_sources
 from rag.evals.runner import ABLATIONS, evaluate, to_markdown, write_results
 from rag.generate.answer import answer_question
@@ -146,6 +148,38 @@ def eval_cmd(
     typer.echo(to_markdown(reports))
     path = write_results(out, reports, meta)
     typer.secho(f"Saved {path}", fg="green")
+
+
+@app.command("draft-questions")
+def draft_questions_cmd(
+    n: Annotated[int, typer.Option(help="Chunks to sample (one per page).")] = 100,
+    seed: Annotated[str, typer.Option(help="Sampling seed (same seed = same sample).")] = "v1",
+    out: Annotated[Path, typer.Option(help="Drafts file to review.")] = Path("evals/drafts.jsonl"),
+) -> None:
+    """Draft golden questions with the configured LLM, for human review before use."""
+    settings = Settings()
+    try:
+        conn = connect(settings)
+    except psycopg.OperationalError as exc:
+        raise _database_unreachable(exc) from exc
+    with conn:
+        samples = sample_chunks(conn, n=n, seed=seed)
+    typer.echo(f"Drafting from {len(samples)} chunks with {settings.llm_backend}...", err=True)
+    rows = draft_items(
+        samples,
+        make_generator(settings),
+        on_progress=lambda done, kept: typer.echo(
+            f"  {done}/{len(samples)} sampled, {kept} kept", err=True
+        ),
+    )
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+    flagged = sum("high-overlap" in row["tags"] for row in rows)
+    typer.secho(
+        f"{len(rows)} drafts written to {out} ({flagged} tagged high-overlap). "
+        "Review them before merging into the golden set.",
+        fg="green",
+    )
 
 
 @app.command("init-db")

@@ -63,7 +63,14 @@ ablation table is the centrepiece of the README.
 - [ ] fixes to measure: query rewriting, max chunks per page
 - [ ] CI subset gate (fail on >5pt recall drop)
 
-### Phase 5 — API + UI + deploy (M)
+### Phase 5 — API + UI + deploy (M) — "glass-box RAG" demo (agreed 2026-10-10, after Phase 4)
+- [ ] Upload file (md/txt/pdf), URL (trafilatura, SSRF-safe) or pasted text → per-upload `collection`
+- [ ] Live pipeline view via SSE events: load → clean → chunk → embed (progress) → store
+- [ ] Ask view: query embed, dense/keyword lists, RRF, rerank before/after, streamed answer
+- [ ] Clickable [n] citations open the exact passage; invented citations flagged
+- [ ] Prebuilt "Kubernetes docs" collection + link to eval results (interview story)
+- [ ] Limits: file size/pages, rate limit, 24 h TTL on uploads
+- Open decisions: Next.js vs lighter FastAPI-served UI; add .docx?
 - [ ] FastAPI `/search`, `/ask` (streaming), validation, per-IP rate limit, daily cost cap
 - [ ] Next.js page: answer, clickable citations, chunk panel with scores
 - [ ] Dockerfile, Fly.io + Neon, secrets via Fly; per-query latency/cost logs

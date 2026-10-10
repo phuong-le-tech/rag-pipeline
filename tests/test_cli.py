@@ -247,6 +247,36 @@ def test_eval_aborts_on_unknown_golden_sources(tmp_path, monkeypatch, test_datab
     assert "nope.md" in result.output
 
 
+@pytest.mark.integration
+def test_draft_questions_writes_reviewable_jsonl(tmp_path, monkeypatch, test_database_url):
+    corpus = tmp_path / "corpus"
+    for i, section in enumerate(["concepts", "tasks", "reference"]):
+        (corpus / section).mkdir(parents=True)
+        body = f"Paragraph {i} about volumes and pods. " * 20
+        (corpus / section / f"p{i}.md").write_text(f"---\ntitle: P{i}\n---\n{body}\n")
+    monkeypatch.setenv("RAG_DATABASE_URL", test_database_url)
+    monkeypatch.setenv("RAG_EMBEDDING_BACKEND", "fake")
+    monkeypatch.setenv("RAG_EMBEDDING_DIM", "8")
+    with psycopg.connect(test_database_url) as conn:
+        conn.execute("TRUNCATE documents RESTART IDENTITY CASCADE")
+    runner.invoke(cli.app, ["ingest", str(corpus)])
+
+    class JsonGenerator:
+        def generate(self, system, user):
+            return '{"question": "How do scratch volumes behave?", "answer": "See passage."}'
+
+    monkeypatch.setattr(cli, "make_generator", lambda _s: JsonGenerator())
+    out = tmp_path / "drafts.jsonl"
+
+    result = runner.invoke(cli.app, ["draft-questions", "--n", "2", "--out", str(out)])
+
+    assert result.exit_code == 0, result.output
+    rows = [json.loads(line) for line in out.read_text().splitlines()]
+    assert len(rows) == 2
+    assert {r["origin"] for r in rows} == {"llm"}
+    assert "2 drafts" in result.output
+
+
 def test_eval_rejects_unknown_config_name(tmp_path):
     result = runner.invoke(cli.app, ["eval", "--config", "magic", "--out", str(tmp_path)])
 
