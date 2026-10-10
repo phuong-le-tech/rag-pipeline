@@ -1,8 +1,8 @@
 import json
 
 import pytest
-from rag.evals.answers import RetryingGenerator, answers_markdown, evaluate_answers
 
+from rag.evals.answers import RetryingGenerator, answers_markdown, evaluate_answers
 from rag.evals.golden import GoldenItem
 from rag.evals.judge import UnanswerableItem
 from rag.generate.prompt import REFUSAL
@@ -117,6 +117,32 @@ def test_results_keep_unsupported_claims_for_failure_analysis():
     lam = next(r for r in report.results if r.id == "u2")
     assert lam.refused is False
     assert lam.citations["invalid_citations"] == 1
+
+
+class SequenceJudge:
+    def __init__(self, outputs):
+        self.outputs = list(outputs)
+        self.calls = 0
+
+    def generate(self, system, user):
+        self.calls += 1
+        return self.outputs.pop(0)
+
+
+def test_judge_is_asked_again_when_its_json_is_malformed():
+    retriever = StubRetriever({"roll back?": [hit(1)]})
+    generator = ByQuestionGenerator({"roll back?": "Undo [1]."})
+    valid = json.dumps({"claims": [{"text": "undo", "supported": True}], "correct": "yes"})
+    malformed = '{"claims": [{"text": "undo", "supported": true}]], "correct": "yes"}'
+    judge = SequenceJudge([malformed, valid])
+
+    report = evaluate_answers(
+        GOLDEN[:1], [], retriever, generator, judge, RetrieverConfig(), sleep=lambda _s: None
+    )
+
+    assert judge.calls == 2
+    assert report.results[0].faithfulness == 1.0
+    assert report.summary["judge_failures"] == 0
 
 
 def test_judge_garbage_counts_as_failure_not_crash():

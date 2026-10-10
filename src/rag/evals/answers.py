@@ -14,6 +14,8 @@ from rag.generate.answer import SupportsRetrieve, answer_question
 from rag.generate.generator import Generator
 from rag.retrieval.retriever import RetrieverConfig
 
+JUDGE_ATTEMPTS = 3
+
 
 class RetryingGenerator:
     """Adds rate-limit backoff to any Generator (free tiers return 429 often)."""
@@ -67,7 +69,12 @@ def _answer_one(
     judgement = None
     if judge is not None and not answer.refused:
         system, user = judge_prompt(question, answer.retrieved, answer.text, reference)
-        judgement = parse_judgement(judge.generate(system, user))
+        # LLM judges occasionally emit invalid JSON (e.g. a stray bracket); a fresh sample
+        # almost always parses, so re-ask instead of dropping the score.
+        for _ in range(JUDGE_ATTEMPTS):
+            judgement = parse_judgement(judge.generate(system, user))
+            if judgement is not None:
+                break
     return AnswerResult(
         id=item_id,
         kind=kind,
