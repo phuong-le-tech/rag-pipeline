@@ -50,6 +50,13 @@ training data.
 sometimes unhelpful) and filling gaps from model knowledge (helpful, unverifiable, sometimes
 wrong).
 
+**LLM-as-judge**: using a (preferably different) LLM to grade answers against a rubric, e.g.
+"is each claim supported by the passages?". Scales human review, but has its own biases and
+output-format failures.
+
+**Self-preference bias**: LLM judges rate outputs from their own model family higher; use a
+judge from another family for fair comparisons.
+
 **Golden set**: hand-checked questions with known relevant sources and reference answers, used
 to measure the system.
 

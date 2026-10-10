@@ -1,7 +1,7 @@
 # 6. Evaluation: golden sets, metrics, ablations
 
-> Status: retrieval evaluation works (`rag eval`) on 25 hand-written questions. Next: more
-> questions (LLM-drafted, human-reviewed) and answer-level metrics (faithfulness, citations).
+> Status: complete. Retrieval evaluated on 94 reviewed questions (10 configurations), answers
+> evaluated with an LLM judge (faithfulness, correctness, citations, refusals).
 
 ## Concept
 
@@ -138,6 +138,66 @@ What the bigger set changed:
 5. **Keep the generated pages.** With reranking, removing them lowers Hit@5 (0.894 → 0.862).
    The open question from chapter 2 is settled.
 6. **Dense ≫ keyword** at every sample size.
+
+## Answer-level results (2026-10-11, `rag eval-answers`)
+
+Retrieval: `hybrid+rerank, max 1/page` (the `rag ask` default). Answers:
+`nvidia/nemotron-3-super-120b-a12b:free` via OpenRouter. Judge: `claude-sonnet-5-5`, a
+different model family, so it is less likely to go easy on the answers (LLM judges tend to
+prefer their own model's outputs). Results file
+`evals/results/2026-10-10T23-36-46Z-answers-rejudged.json`.
+
+| Metric | All (94) | Hand-written (25) | LLM-drafted (69) |
+|---|---:|---:|---:|
+| Answered (not refused) | 0.926 | 0.88 | 0.94 |
+| Faithfulness (share of claims supported by the passages) | 0.836 | 0.80 | 0.85 |
+| Answers with *every* claim supported | 0.52 | 0.45 | 0.54 |
+| Correct (yes / partial) vs reference answer | 0.79 / 0.16 | 0.68 / 0.14 | 0.75 / 0.15 |
+| Sentences carrying a citation | 0.41 | | |
+| Answers with an invented citation number | **0.00** | | |
+| Refused on unanswerable questions | **14 / 15** | | |
+
+How to read it:
+
+- **Correctness is high, strict faithfulness is not.** 95% of answers are correct or partly
+  correct, but only half have *every* claim backed by the passages. The typical unsupported
+  claim is a true detail from the model's own memory ("`--sort-by=cpu` puts the highest
+  first"). That's harmless here and dangerous elsewhere, and it's exactly what a strict judge
+  should flag. Nemotron fills gaps more than Claude did in chapter 5.
+- **Citations are valid but sparse.** No invented citation numbers in 94 answers, but only
+  41% of sentences cite anything: the model cites the main claim and not the follow-ups. A
+  stronger answering model, or a prompt example of fully cited answers, is the next lever.
+- **The 7 refusals on answerable questions are retrieval misses**, not cowardice. For example
+  `h03 "what does --to-revision do"`: dense search treats "revision" ≈ "version" and returns
+  CRD versioning pages, and keyword search stems the flag to a common word. The model
+  correctly refused rather than guess. Exact-identifier boosting is a candidate fix.
+- **The one unanswerable question answered** ("How much memory should I give Docker Desktop…")
+  got "300 MiB [1]", lifted from an unrelated resize example: a plausible number grabbed from a
+  passage that doesn't apply. Refusal prompts can't fully stop this; a judge pass at answer
+  time could.
+
+### Should a low reranker score trigger a refusal? Measured: no
+
+| Threshold on top reranker score | Wrongly refused (of 94 answerable) | Correctly refused (of 15 unanswerable) |
+|---|---:|---:|
+| −4 | 2 | 5 |
+| 0 | 4 | 10 |
+| +2 | 7 | 12 |
+
+False-premise questions score *high* (made-up `kubectl --auto-heal` flag: 3.36; fake
+"PodAutoBalancer" resource: 4.24) because the passages *look* relevant: real flags, real
+resources. The model's own refusal already catches 14 of 15 including those, so a threshold
+would only add wrong refusals. Decision: no score threshold.
+
+### Lesson: LLM judges need defensive parsing
+
+On the first run Sonnet returned invalid JSON for **13 of 94 verdicts** (a stray `]` after the
+claims list). Re-asking fixed 8; the other 5 failed 3 times in a row, a systematic quirk on
+certain inputs. The final parser tries strict JSON, then repairs minor syntax slips
+(`json-repair`), then still enforces the expected shape, so garbage is rejected and slips are
+not. The cleanest fix is structured output (tool calling with a JSON schema), planned for when
+the generator interface next changes. Rule of thumb: count judge failures in every report.
+Silently dropped verdicts bias the average.
 
 ## Results v1 (2026-10-10, corpus `b2e60d8`, `local:BAAI/bge-small-en-v1.5:384:1500:loader2`, reranker MiniLM-L-6, 25 questions)
 

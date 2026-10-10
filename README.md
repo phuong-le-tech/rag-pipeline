@@ -86,3 +86,14 @@ Key findings: reranking is the robust win (+0.13 Hit@5); capping one chunk per p
 gain; LLM-drafted eval questions score ~0.15 higher than hand-written ones, so results are
 always reported by question origin; query rewriting helps hand-written questions but not
 others, so it is opt-in (`rag ask --rewrite`).
+
+**Answer quality** (default retrieval, answers by Nemotron 3 Super via OpenRouter, judged by
+Claude Sonnet, 94 answerable + 15 unanswerable questions):
+
+| Metric | Value |
+|---|---:|
+| Correct or partly correct vs reference | 0.95 (0.79 + 0.16) |
+| Faithfulness (claims supported by the cited passages) | 0.84 |
+| Answers with an invented citation | 0.00 |
+| Refused on unanswerable / false-premise questions | 14 / 15 |
+| Refused although answerable (retrieval misses) | 0.07 |

@@ -50,7 +50,7 @@ ablation table is the centrepiece of the README.
 - [x] Claude streaming wrapper (`claude-sonnet-5-5`, key via SecretStr setting)
 - [x] citation parser + validator (cited ⊆ retrieved)
 - [x] refusal on empty retrieval + model refusal; CLI `rag ask`
-- [ ] score-threshold refusal: calibrate in Phase 4
+- [x] score-threshold refusal: measured in Phase 4, not adopted
 - [x] first real Claude run: 2/3 correct, refusal works; failure #1 (CPU sort) = retrieval, logged in docs ch. 5
 
 ### Phase 4 — Evaluation (H)
@@ -59,13 +59,15 @@ ablation table is the centrepiece of the README.
 - [x] 97 Nemotron drafts → 69 accepted after review (Claude, reasons logged) → 94 golden questions
 - [x] hit@k, recall@k, MRR, nDCG@10 (page relevance, chunk ranks)
 - [x] LLM-judge faithfulness/correctness, citation stats, 15 unanswerable questions (`rag eval-answers`)
-- [ ] run answer evals for real; refusal threshold calibration
+- [x] answer evals (Nemotron answers, Sonnet judge): faithfulness 0.84, correct 0.79+0.16 partial, 14/15 refusals
+- [x] refusal threshold measured: rejected (false premises score high)
 - [x] fix #1 max chunks per page: max 1/page Hit@5 0.80 → 0.88
 - [x] fix #2 query rewriting: +0.01 Hit@5 overall (helps hand-written only) → opt-in `--rewrite`
 - [x] `rag ask` defaults from n=94: hybrid + rerank + max 1/page
 - [x] `rag eval [--config]` → `evals/results/<ts>.json` + Markdown table (first results in README)
 - [ ] fixes to measure: query rewriting, max chunks per page
-- [ ] CI subset gate (fail on >5pt recall drop)
+- [x] CI: lint + unit + pgvector integration tests
+- [ ] CI retrieval-quality gate (needs ingested corpus in CI; deferred)
 
 ### Phase 5 — API + UI + deploy (M) — "glass-box RAG" demo (agreed 2026-10-10, after Phase 4)
 - [ ] Upload file (md/txt/pdf), URL (trafilatura, SSRF-safe) or pasted text → per-upload `collection`

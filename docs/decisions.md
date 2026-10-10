@@ -2,6 +2,15 @@
 
 Newest first. Each entry: context, decision, consequences. Revisit when evals say otherwise.
 
+## 2026-10-11: No reranker-score refusal threshold; Sonnet judge with repair fallback
+- **Context**: answer evals (Nemotron answers, Sonnet judge). The model refused 14/15
+  unanswerable questions on its own; false-premise questions get *high* reranker scores.
+- **Decision**: no score threshold (it would wrongly refuse 2–7 answerable questions to catch
+  few extra). Judge verdicts: strict JSON, re-ask up to 3 times, then `json-repair` fallback,
+  then shape validation; judge failures always reported.
+- **Consequence**: 0 judge failures in the final run (13 on the first). Structured output via
+  tool calling is the cleaner long-term fix.
+
 ## 2026-10-11: `rag ask` defaults from the 94-question evaluation
 - **Context**: v2 golden set (25 human + 69 reviewed LLM drafts), all 10 configs, results split
   by question origin.
