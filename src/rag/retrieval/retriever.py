@@ -12,6 +12,7 @@ import psycopg
 from rag.embed import Embedder
 from rag.retrieval.fusion import DEFAULT_K, cap_per_source, rrf
 from rag.retrieval.rerank import Reranker
+from rag.retrieval.rewrite import QueryRewriter
 from rag.retrieval.search import Hit, dense_search, keyword_search
 
 Mode = Literal["dense", "keyword", "hybrid"]
@@ -26,6 +27,7 @@ class RetrieverConfig:
     rrf_k: int = DEFAULT_K
     rerank: bool = False  # cross-encoder re-scores all candidates, then keeps top k
     max_per_source: int | None = None  # cap chunks per page in the final top k
+    rewrite: bool = False  # LLM restates the question in doc vocabulary for search only
 
     def __post_init__(self) -> None:
         if self.mode not in get_args(Mode):
@@ -40,11 +42,16 @@ class RetrieverConfig:
 
 class Retriever:
     def __init__(
-        self, conn: psycopg.Connection, embedder: Embedder, reranker: Reranker | None = None
+        self,
+        conn: psycopg.Connection,
+        embedder: Embedder,
+        reranker: Reranker | None = None,
+        rewriter: QueryRewriter | None = None,
     ) -> None:
         self.conn = conn
         self.embedder = embedder
         self.reranker = reranker
+        self.rewriter = rewriter
 
     def _ranked_lists(self, query: str, config: RetrieverConfig) -> list[list[Hit]]:
         lists = []
@@ -72,9 +79,12 @@ class Retriever:
             raise ValueError("query must not be blank")
         if config.rerank and self.reranker is None:
             raise ValueError("config.rerank is set but the Retriever has no reranker")
+        if config.rewrite and self.rewriter is None:
+            raise ValueError("config.rewrite is set but the Retriever has no rewriter")
+        search_query = self.rewriter.rewrite(query) if config.rewrite else query
         # Reranking and the per-page cap both need a deeper list than k to choose from.
         deep = config.rerank or config.max_per_source is not None
-        hits = self._first_stage(query, config, config.candidates if deep else config.k)
+        hits = self._first_stage(search_query, config, config.candidates if deep else config.k)
         if config.rerank:
             hits = self.reranker.rerank(query, hits)
         return cap_per_source(hits, lambda h: h.source, config.max_per_source, config.k)

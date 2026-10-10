@@ -31,6 +31,10 @@ ABLATIONS: dict[str, RetrieverConfig] = {
     ),
     "hybrid+rerank, max 2/page": RetrieverConfig(mode="hybrid", rerank=True, max_per_source=2),
     "hybrid+rerank, max 1/page": RetrieverConfig(mode="hybrid", rerank=True, max_per_source=1),
+    "hybrid+rerank, rewrite": RetrieverConfig(mode="hybrid", rerank=True, rewrite=True),
+    "hybrid+rerank, rewrite, max 1/page": RetrieverConfig(
+        mode="hybrid", rerank=True, rewrite=True, max_per_source=1
+    ),
 }
 
 

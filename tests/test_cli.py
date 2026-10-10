@@ -176,6 +176,20 @@ def test_llm_error_hint_matches_failure_kind(exc, expected):
     assert expected in cli.llm_error_hint(exc, settings)
 
 
+def test_llm_error_hint_daily_free_quota_does_not_suggest_another_free_model():
+    request = httpx.Request("POST", "https://openrouter.ai/api/v1/chat/completions")
+    exc = openai.RateLimitError(
+        "Rate limit exceeded: free-models-per-day",
+        response=httpx.Response(429, request=request),
+        body={"error": {"message": "Rate limit exceeded: free-models-per-day"}},
+    )
+
+    hint = cli.llm_error_hint(exc, Settings(llm_backend="openrouter"))
+
+    assert "daily" in hint
+    assert "RAG_OPENROUTER_MODEL" not in hint
+
+
 def test_llm_error_hint_rate_limit_suggests_switching_openrouter_model():
     hint = cli.llm_error_hint(
         _openai_error(openai.RateLimitError, 429), Settings(llm_backend="openrouter")

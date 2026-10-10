@@ -36,6 +36,11 @@ PREVIEW_CHARS = 120
 def llm_error_hint(exc: Exception, settings: Settings) -> str:
     """Actionable next step for an LLM failure, by kind of error rather than one generic hint."""
     key = LLM_KEY_NAMES.get(settings.llm_backend, "the provider API key")
+    if isinstance(exc, anthropic.RateLimitError | openai.RateLimitError) and "per-day" in str(exc):
+        return (
+            "The daily free-model quota is used up (it applies to every free model): wait for "
+            "the reset, add OpenRouter credits, or switch to RAG_LLM_BACKEND=anthropic."
+        )
     if isinstance(exc, anthropic.RateLimitError | openai.RateLimitError):
         hint = "The model is rate-limited: retry in a minute"
         if settings.llm_backend == "openrouter":
