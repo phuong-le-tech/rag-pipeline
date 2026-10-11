@@ -1,22 +1,26 @@
 # rag-pipeline — instructions for Claude Code
 
 Portfolio RAG system over the Kubernetes docs: hybrid retrieval (pgvector + Postgres FTS,
-RRF fusion, cross-encoder rerank), cited answers with refusal, and an eval harness whose
-ablation table is the README centrepiece.
+RRF fusion, cross-encoder rerank), cited answers with refusal, and an evaluation harness behind
+every default. The owner is learning RAG through this project and will demo it in interviews.
 
 ## Before any work
 - Read `.claude/plans/rag-pipeline.plan.md`: phases, decisions, risks. Tick boxes as tasks land.
+- **Status: Phases 1–4 done. Next: Phase 5, the "glass-box" web UI** (upload file/URL/text,
+  live pipeline progress, visible retrieval steps, clickable citations). Its open decisions
+  (Next.js vs FastAPI-served UI, `.docx` support) are the owner's to make: ask first.
 - Work the current phase in order; do not start a later phase without being asked.
 
-## Docs are a deliverable (the owner is learning RAG through this project)
+## Docs are a deliverable
 - `docs/` teaches the project: one chapter per pipeline stage, each with
   **Concept → In this repo (code links) → Trade-offs → Try it**. Index: `docs/README.md`.
 - Every change that adds or alters behaviour updates docs **in the same commit**: the relevant
   chapter, the status table in `docs/README.md`, new terms in `docs/glossary.md`, and any real
-  choice in `docs/decisions.md` (newest first, context / decision / consequence).
-- Starting a new phase means writing its chapter (e.g. `04-retrieval.md` for Phase 2).
+  choice in `docs/decisions.md` (newest first, context / decision / consequence). The decision
+  log is history: add entries, don't rewrite old ones.
+- Starting a new phase means writing its chapter (Phase 5 → `07-serving.md`).
 - Explain the *why* for a learner: plain language, small examples, no copy-pasted API docs.
-- When eval numbers exist, docs quote them from `rag eval` output, never invented.
+- Keep README's Status, Commands, Configuration, Layout and Roadmap in sync with the code.
 
 ## Commands
 ```bash
@@ -27,41 +31,49 @@ scripts/fetch_corpus.sh [ref]             # k8s docs -> data/k8s-docs (+ CORPUS_
 uv run rag chunk data/k8s-docs --preview  # inspect cleaning + chunking, no DB
 RAG_EMBEDDING_THREADS=6 uv run rag ingest data/k8s-docs   # incremental; ALWAYS the corpus root
                                           # (first full run ~35-60 min on CPU, re-runs seconds)
-uv run rag eval [--config NAME] [--limit N]   # retrieval metrics on evals/golden.jsonl
+uv run rag search "QUERY" [--mode M] [--rerank]   # ranked passages, no LLM
+uv run rag ask "QUESTION" [--rewrite]     # cited answer (defaults: hybrid+rerank+max 1/page)
+uv run rag eval [--config NAME] [--limit N]   # retrieval metrics, split by question origin
 uv run rag eval-answers [--config NAME] [--judge-backend B]   # faithfulness, citations, refusal
 RAG_LLM_BACKEND=openrouter uv run rag draft-questions --n 100 --seed S   # resumable
-uv run rag review-drafts                      # human review: y/e/n/q, resumable, appends to golden
+uv run rag review-drafts                  # human review: y/e/n/q, resumable, appends to golden
 uv run ruff format . && uv run ruff check --no-cache .   # --no-cache: match CI exactly
 uv run pytest -m "not integration" --cov=rag   # unit tests
 uv run pytest -m integration                   # needs compose DB
 ```
+Long LLM or ingest jobs run in the background with output to `data/*.log`; never poll with sleep.
 
 ## Layout
-- `src/rag/config.py`: `Settings`, env vars prefixed `RAG_` (pydantic-settings, `.env` supported)
-- `src/rag/db.py` + `schema.sql`: raw psycopg; `{embedding_dim}` templated, literal braces doubled `{{}}`
-- `src/rag/ingest/loaders.py`: Hugo Markdown → `Document` (frontmatter, shortcode cleanup, URL)
-- `src/rag/ingest/chunking.py`: heading-aware chunker → `Chunk(ord, heading, content)`
+- `src/rag/config.py`: `Settings`, env vars prefixed `RAG_` (pydantic-settings, `.env`);
+  `pipeline_fingerprint()` = backend:model:dim:max_chars:loaderN
+- `src/rag/db.py` + `schema.sql`: raw psycopg; `{embedding_dim}` templated, literal braces `{{}}`
+- `src/rag/ingest/`: `loaders.py` (Hugo Markdown → `Document`; frontmatter, shortcodes,
+  HTML→text, heading anchors, `generated` flag), `chunking.py` (heading-aware →
+  `Chunk(ord, heading, content)`), `pipeline.py` (incremental; skip when
+  `(content_hash, fingerprint)` matches; one transaction per doc; prunes missing docs)
 - `src/rag/embed/`: `Embedder` protocol (`embed` for passages, `embed_query` for queries —
-  never mix them), `make_embedder(settings)` picks `RAG_EMBEDDING_BACKEND`: `local` default
-  (`LocalEmbedder`, bge-small via fastembed, 384d, no key), `openai` (needs `OPENAI_API_KEY`,
-  set dim 1536), `fake` (tests only). No Anthropic embeddings exist.
-- `src/rag/ingest/pipeline.py`: incremental ingest; skip when `(content_hash, fingerprint)`
-  matches; one transaction per doc; prunes docs missing from disk
-- `src/rag/retrieval/`: `search.py` (dense via pgvector, keyword via FTS with OR semantics),
-  `fusion.py` (`rrf`), `rerank.py` (cross-encoder, `RAG_RERANKER_MODEL`, MiniLM default),
-  `retriever.py` (`Retriever` + `RetrieverConfig` switches = ablation rows, incl. `rerank`)
+  never mix them); `make_embedder`: `local` default (bge-small via fastembed, 384d, no key),
+  `openai` (needs `OPENAI_API_KEY`, dim 1536), `fake` (tests). No Anthropic embeddings exist.
+- `src/rag/retrieval/`: `search.py` (dense via pgvector with ef_search + iterative scan;
+  keyword via FTS with OR semantics), `fusion.py` (`rrf`, `cap_per_source`), `rerank.py`
+  (cross-encoder, `RAG_RERANKER_MODEL`), `rewrite.py` (`QueryRewriter`, search-only, cached),
+  `retriever.py` (`Retriever` + `RetrieverConfig`: mode, k, candidates, include_generated,
+  rrf_k, rerank, max_per_source, rewrite — every field is an ablation switch)
 - `src/rag/generate/`: `prompt.py` (numbered passages + rules, exact `REFUSAL` sentence),
   `citations.py` (parse/validate `[n]`), `generator.py` (`RAG_LLM_BACKEND`: `anthropic` →
-  `ClaudeGenerator`, `openrouter` → `OpenAICompatibleGenerator` with `RAG_OPENROUTER_MODEL`,
-  `fake`), `answer.py` (`answer_question -> Answer`)
-- `src/rag/cli.py`: typer app, entry point `rag` (`init-db`, `chunk`, `ingest`, `search`, `ask`)
-- `ANTHROPIC_API_KEY` / `OPENROUTER_API_KEY` live in `.env` (gitignored), read into SecretStr
-  settings. Never read `.env` directly, print or commit keys; tests use `RAG_LLM_BACKEND=fake`.
-- **Changing cleaning output? Bump `LOADER_VERSION` in `ingest/loaders.py`**, or incremental
-  ingest will skip every doc (raw-file hashes don't change) and keep stale vectors.
+  `ClaudeGenerator`, `openrouter` → `OpenAICompatibleGenerator`, `fake`; request timeout
+  `RAG_LLM_TIMEOUT_S`), `answer.py` (`answer_question -> Answer`)
+- `src/rag/evals/`: `metrics.py` (hit@k, recall@k, MRR, nDCG: page relevance, chunk ranks),
+  `golden.py` (JSONL loader, unknown-source check), `runner.py` (`ABLATIONS`, `evaluate`,
+  tables, `breakdown_markdown` by origin), `drafting.py` (sampling, drafts, `with_retry`),
+  `review.py` (resumable review ledger), `judge.py` (LLM judge prompt + tolerant parsing,
+  citation stats, unanswerable set), `answers.py` (`evaluate_answers`, `RetryingGenerator`)
+- `src/rag/cli.py`: typer app `rag`: init-db, chunk, ingest, search, ask, eval, eval-answers,
+  draft-questions, review-drafts. `ask_config()` holds the measured `rag ask` defaults.
+- `evals/`: `golden.jsonl` (94: 25 human, 69 reviewed LLM drafts tagged `reviewer:…`),
+  `unanswerable.jsonl` (15), `drafts*.jsonl/.txt` (audit trail); `evals/results/` gitignored
 - Integration tests use a separate `rag_test` DB created by `tests/conftest.py` (dim 8);
-  they never touch the real index and skip if Postgres is down
-- Planned: `retrieval/`, `generate/`, `evals/` (see plan)
+  they never touch the real index and skip if Postgres is down.
 
 ## Conventions
 - TDD: write the failing test first, run it, then implement. Coverage ≥ 80%.
@@ -69,23 +81,40 @@ uv run pytest -m integration                   # needs compose DB
   outside dependencies; DB tests carry `@pytest.mark.integration`.
 - Frozen dataclasses for records; pure functions where possible; no ORM, SQL lives in `.sql`
   or near the query.
-- External services (OpenAI, Anthropic, rerankers) sit behind a `Protocol` with a
-  deterministic fake for tests. Unit tests never hit the network.
+- External services (LLMs, embedders, rerankers) sit behind a `Protocol` with a deterministic
+  fake for tests. Unit tests never hit the network; CI needs no keys.
 - Library errors: `ValueError` naming the bad value or path. CLI errors: catch the specific
-  exception, red message + fix hint, `typer.Exit(1)` (see `init_db_cmd`).
-- Commands kebab-case (`init-db`), modules snake_case, line length 100 (ruff).
-- Conventional commits (`feat:`, `fix:`, `chore:`…).
+  exception, red message + actionable hint, `typer.Exit(1)` (`llm_error_hint` for LLM errors).
+- Batch LLM jobs: request timeout, retry with backoff, write each result as it's produced,
+  resume by id.
+- Commands kebab-case (`init-db`), modules snake_case, line length 100 (ruff,
+  `known-first-party = ["rag"]`).
+- Conventional commits (`feat:`, `fix:`, `docs:`, `ci:`…).
 
 ## Non-negotiables
-- Never commit `data/`, `.env`, API keys or eval result dumps (`evals/results/`).
-- Never hand-tune eval numbers; every number in the README comes from `rag eval` output
-  with the corpus `CORPUS_REF` recorded.
-- Retrieval changes must be measurable: add or keep a `RetrieverConfig` switch so the
-  ablation table can compare it.
-- Keep the LLM wrapper thin; no LangChain/LlamaIndex.
+- Never commit `data/`, `.env`, API keys or eval result dumps (`evals/results/`). Never read
+  `.env` directly or print keys; check them via `Settings` (SecretStr).
+- Never hand-tune eval numbers; README and docs numbers come from `rag eval` /
+  `rag eval-answers` output, with corpus ref, fingerprint and results file recorded.
+- Always report eval results by question origin (human vs LLM-drafted): LLM questions score
+  ~0.15 higher and can hide regressions.
+- Golden entries change only after reading the source passage; record reviewer and reason.
+- Retrieval changes must be measurable: add or keep a `RetrieverConfig` switch and an
+  `ABLATIONS` row. Defaults change only on n=94-scale evidence, not anecdotes.
+- Keep LLM wrappers thin; no LangChain/LlamaIndex.
 
 ## Gotchas
-- The project pins Python 3.12 (`<3.13`) for ML wheel availability; system Python is 3.14.
-- DB listens on port 5433, not 5432, to avoid clashing with a local Postgres.
-- This repo sits inside the parent `Project/` git repo; run git commands from this folder.
-- `git commit` hooks reject `-n`-style flags; never bypass hooks.
+- Python pinned to 3.12 (`<3.13`) for ML wheels; system Python is 3.14.
+- DB on port 5433, not 5432.
+- Bumping cleaning output? Bump `LOADER_VERSION` in `ingest/loaders.py`, or incremental ingest
+  skips every doc (raw hashes unchanged) and keeps stale vectors.
+- ONNX can oversubscribe the CPU (load average 40+): set `RAG_EMBEDDING_THREADS`.
+- OpenRouter free models: shared upstream pools return 429; the account-wide daily cap is
+  50 requests without credits, 1,000 with credits. Nemotron 3 Super is the working default.
+- LLM judges sometimes emit invalid JSON: `parse_judgement` re-asks, then repairs, then
+  validates shape; always report judge failures.
+- Ruff caches results: lint with `--no-cache` before pushing (CI has no cache).
+- The repo sits inside the parent `Project/` folder but has its own git remote
+  (`phuong-le-tech/rag-pipeline`); run git commands from this folder.
+- `git commit` hooks reject `-n`-style flags (including `bash -n`/`[ -n` in the same command);
+  never bypass hooks.

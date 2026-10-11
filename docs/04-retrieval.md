@@ -1,6 +1,8 @@
 # 4. Retrieval: dense, keyword, hybrid
 
 > Status: dense, keyword, hybrid (RRF) and cross-encoder reranking all work via `rag search`.
+> **Measured on 94 questions (chapter 6):** dense ≫ keyword, reranking +0.13 Hit@5, and capping
+> one chunk per page adds a little more. `rag ask` uses hybrid + rerank + max 1 chunk per page.
 
 ## Concept
 

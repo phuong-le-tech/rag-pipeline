@@ -31,8 +31,8 @@ Garbage in, garbage retrieved. Ingestion has three jobs:
 
 **Chunk size** is a real trade-off: small chunks match precisely but lose context ("it" no
 longer says what "it" is); big chunks keep context but dilute the embedding and waste prompt
-tokens. Typical range: 200–1,000 tokens. We start at 1,500 characters (~350 tokens) and will
-*measure* alternatives in Phase 4 instead of guessing.
+tokens. Typical range: 200–1,000 tokens. We start at 1,500 characters (~350 tokens). Chunk size
+hasn't been tuned yet: the eval harness (chapter 6) makes it a measurable experiment, not a guess.
 
 **Overlap** (repeating the end of one chunk at the start of the next) helps fixed-size
 chunking. Structure-aware chunking needs it less because cuts fall on paragraph boundaries.
@@ -102,8 +102,9 @@ Profiling before indexing paid off immediately:
 - Generated pages produce most of the tiny chunks: API reference pages put a heading on every
   field, so sections are one line long.
 
-We **keep** generated pages but tag them, so Phase 4 can measure retrieval with and without
-them. See the [decision log](decisions.md). The lesson generalises: always profile a corpus
+We **keep** generated pages but tag them, so retrieval could be measured with and without them.
+**Measured (chapter 6, 94 questions):** with reranking, removing them lowers Hit@5 from 0.894 to
+0.862, so they stay. See the [decision log](decisions.md). The lesson generalises: always profile a corpus
 (counts, length distribution, leftover markup) before you embed it.
 
 ### Chunker: [`src/rag/ingest/chunking.py`](../src/rag/ingest/chunking.py)

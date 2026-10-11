@@ -16,7 +16,7 @@ Each chapter follows the same shape:
 |---|---|---|
 | 1 | [RAG fundamentals](01-rag-fundamentals.md) | ✅ |
 | 2 | [Ingestion: loading, cleaning, chunking](02-ingestion.md) | ✅ |
-| 3 | [Storage and indexing: embeddings, pgvector, full-text](03-storage-and-indexing.md) | ✅ schema + embedders |
+| 3 | [Storage and indexing: embeddings, pgvector, full-text](03-storage-and-indexing.md) | ✅ |
 | 4 | [Retrieval: dense, keyword, hybrid, RRF, reranking](04-retrieval.md) | ✅ |
 | 5 | [Generation: grounded prompts, citations, refusal](05-generation.md) | ✅ |
 | 6 | [Evaluation: golden sets, metrics, ablations](06-evaluation.md) | ✅ |

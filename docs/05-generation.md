@@ -64,9 +64,10 @@ checked against the number of passages:
 2. **Passages retrieved but irrelevant → the model refuses** with the exact sentence, detected
    by `startswith(REFUSAL)`.
 
-A third layer (refuse when the reranker's best score is below a threshold) is easy to add, but
-the threshold must come from data, not a guess. Phase 4 will calibrate it on questions that
-have no answer in the docs.
+A third layer (refuse when the reranker's best score is below a threshold) was **measured and
+rejected** in chapter 6: questions with a false premise (a made-up flag or resource) get *high*
+reranker scores because the passages look relevant, while the model's own refusal already
+catches 14 of 15 unanswerable questions.
 
 ## In this repo
 

@@ -1,6 +1,6 @@
 # Plan: RAG pipeline portfolio project
 
-**Complexity**: Large (~5 weeks part-time) · **Approved**: 2026-10-10
+**Complexity**: Large (~5 weeks part-time) · **Approved**: 2026-10-10 · **Status (2026-10-11)**: Phases 1–4 done, Phase 5 next
 
 ## Summary
 Question answering over the Kubernetes docs with hybrid retrieval (pgvector + Postgres FTS,
@@ -42,8 +42,8 @@ ablation table is the centrepiece of the README.
 - [x] dense (cosine, ef_search + iterative scan), keyword (OR tsquery + `ts_rank_cd`)
 - [x] `fusion.py` RRF (k=60), pure + unit-tested
 - [x] `Reranker` protocol: cross-encoder via fastembed (MiniLM-L-6 default, bge-v2-m3 configurable); `rag search --rerank`
-- [x] `RetrieverConfig(mode, k, candidates, include_generated, rrf_k)`; CLI `rag search`
-- [x] Fixed heading-anchor noise; `LOADER_VERSION` in fingerprint; full re-ingest running
+- [x] `RetrieverConfig(mode, k, candidates, include_generated, rrf_k, rerank, max_per_source, rewrite)`; CLI `rag search`
+- [x] Fixed heading-anchor noise; `LOADER_VERSION` in fingerprint; full re-ingest done
 
 ### Phase 3 — Cited generation (M)
 - [x] numbered-context prompt, `[n]` citation rule, exact refusal sentence
@@ -65,29 +65,32 @@ ablation table is the centrepiece of the README.
 - [x] fix #2 query rewriting: +0.01 Hit@5 overall (helps hand-written only) → opt-in `--rewrite`
 - [x] `rag ask` defaults from n=94: hybrid + rerank + max 1/page
 - [x] `rag eval [--config]` → `evals/results/<ts>.json` + Markdown table (first results in README)
-- [ ] fixes to measure: query rewriting, max chunks per page
 - [x] CI: lint + unit + pgvector integration tests
-- [ ] CI retrieval-quality gate (needs ingested corpus in CI; deferred)
 
 ### Phase 5 — API + UI + deploy (M) — "glass-box RAG" demo (agreed 2026-10-10, after Phase 4)
-- [ ] Upload file (md/txt/pdf), URL (trafilatura, SSRF-safe) or pasted text → per-upload `collection`
-- [ ] Live pipeline view via SSE events: load → clean → chunk → embed (progress) → store
-- [ ] Ask view: query embed, dense/keyword lists, RRF, rerank before/after, streamed answer
+- Open decisions (owner): Next.js vs lighter FastAPI-served UI; add .docx?
+- [ ] Pipeline emits structured progress events (stage, progress, timing) usable by CLI and API
+- [ ] `collection` column + retrieval filter: uploads never mix with the k8s index or evals
+- [ ] Loaders: PDF (pypdf), URL (trafilatura, SSRF-safe: block private IPs, size/time limits), pasted text
+- [ ] FastAPI: upload/ingest with SSE progress; `/search`; `/ask` streaming with retrieval steps
+- [ ] UI ingest view: load → clean → chunk → embed (progress) → store, chunk previews
+- [ ] UI ask view: query embed, dense/keyword lists, RRF, rerank before/after, streamed answer
 - [ ] Clickable [n] citations open the exact passage; invented citations flagged
 - [ ] Prebuilt "Kubernetes docs" collection + link to eval results (interview story)
-- [ ] Limits: file size/pages, rate limit, 24 h TTL on uploads
-- Open decisions: Next.js vs lighter FastAPI-served UI; add .docx?
-- [ ] FastAPI `/search`, `/ask` (streaming), validation, per-IP rate limit, daily cost cap
-- [ ] Next.js page: answer, clickable citations, chunk panel with scores
-- [ ] Dockerfile, Fly.io + Neon, secrets via Fly; per-query latency/cost logs
+- [ ] Limits: file size/pages, per-IP rate limit, daily LLM cost cap, 24 h TTL on uploads
+- [ ] Judge output via structured output (tool calling) when the generator interface changes
+- [ ] Dockerfile, deploy (e.g. Fly.io + Neon), secrets in the platform; latency/cost logs
+- [ ] docs/07-serving.md chapter
 
 ### Phase 6 — Polish (L)
-- [ ] GitHub Actions: lint, tests, eval subset
-- [ ] README: ablation table, cost/latency, 3–5 failure cases, GIF, diagram
+- [x] GitHub Actions: lint, unit, integration (pgvector service), green on main
+- [ ] CI retrieval-quality gate on a small committed fixture corpus
+- [x] README: ablation + answer tables, commands, configuration (kept in sync)
+- [ ] README: demo GIF, architecture diagram, failure-case gallery (5 documented in docs ch. 5–6)
 
 ## Validation
 ```bash
-uv run ruff check . && uv run pytest -m "not integration" --cov=rag
+uv run ruff format --check . && uv run ruff check --no-cache . && uv run pytest -m "not integration" --cov=rag
 docker compose up -d && uv run pytest -m integration
 ```
 

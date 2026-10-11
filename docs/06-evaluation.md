@@ -253,7 +253,7 @@ All three are worded the way users talk, not the way the docs are titled. Candid
 measure next: query rewriting (let the LLM restate the question in documentation vocabulary),
 and returning fewer chunks per page so one page can't fill the top 5.
 
-### Fix #1 measured: cap chunks per page (`max_per_source`)
+### Fix #1: cap chunks per page (`max_per_source`), confirmed on 94 questions, now the default
 
 The CrashLoopBackOff question got the Pod Lifecycle page *three times* in its top 5. Capping how
 many chunks one page may contribute frees those slots for other pages
@@ -271,13 +271,14 @@ page-level metric naturally rewards. If an answer needs two chunks from the same
 quality could suffer, so the answer-level evaluation must confirm the gain before this becomes
 the default for `rag ask`.
 
-### Fix #2 built, not yet measured: query rewriting (`rewrite`)
+### Fix #2: query rewriting (`rewrite`), helps hand-written questions only, opt-in
 
 [`rewrite.py`](../src/rag/retrieval/rewrite.py): an LLM restates the question in documentation
 vocabulary ("go back to what was running before" → "kubectl rollout undo deployment previous
 revision"). The rewrite is used for **searching only**; the reranker still scores passages
 against the **original** question, since that is the user's real intent. Rewrites are cached
-so each question costs one LLM call per run. Measuring it is blocked on LLM quota (see below).
+so each question costs one LLM call per run. On 25 questions it looked like the biggest win
+(Hit@5 0.96); on 94 it adds only +0.01 overall (see Results v2), so it stays `rag ask --rewrite`.
 
 ### Operational lessons from the first batch LLM run
 

@@ -1,6 +1,7 @@
 # 3. Storage and indexing: embeddings, pgvector, full-text
 
-> Status: schema and embedders exist; ingestion into the DB lands next in Phase 1.
+> Status: complete. Schema, embedders and incremental ingestion are in place (1,652 docs,
+> 17,730 chunks; re-ingesting an unchanged corpus takes seconds).
 
 ## Concept
 
@@ -129,8 +130,8 @@ document's chunks are swapped atomically), and filtering ("only `tasks` pages") 
 ## Trade-offs
 
 - Local `bge-small` (384d): free, private, no key, fast enough on CPU. Smaller than API models,
-  so possibly less accurate. The OpenAI backend stays available and will be an ablation row
-  in Phase 4 to measure the gap.
+  so possibly less accurate. The OpenAI backend stays available; comparing it is a ready-made
+  ablation (switch `RAG_EMBEDDING_BACKEND`, re-ingest, run `rag eval`) once an OpenAI key exists.
 - Changing the embedding model means re-embedding everything, and changing the dimension means
   migrating the column.
 - Postgres FTS uses English stemming; code identifiers can stem oddly. Watch for it in evals.

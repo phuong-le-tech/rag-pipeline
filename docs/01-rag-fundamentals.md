@@ -65,11 +65,12 @@ if the right chunks were found; answer metrics tell you if the LLM used them fai
 |---|---|---|
 | Load + clean | [`ingest/loaders.py`](../src/rag/ingest/loaders.py) | 1 ✅ |
 | Chunk | [`ingest/chunking.py`](../src/rag/ingest/chunking.py) | 1 ✅ |
-| Store / index | [`schema.sql`](../src/rag/schema.sql) | 1 (schema ✅) |
-| Embed | `embed/` | 1 ⏳ |
-| Retrieve, fuse, rerank | `retrieval/` | 2 ⏳ |
-| Generate with citations | `generate/` | 3 ⏳ |
-| Evaluate | `evals/` | 4 ⏳ |
+| Store / index | [`schema.sql`](../src/rag/schema.sql), [`ingest/pipeline.py`](../src/rag/ingest/pipeline.py) | 1 ✅ |
+| Embed | [`embed/`](../src/rag/embed/) | 1 ✅ |
+| Retrieve, fuse, rerank | [`retrieval/`](../src/rag/retrieval/) | 2 ✅ |
+| Generate with citations | [`generate/`](../src/rag/generate/) | 3 ✅ |
+| Evaluate | [`evals/`](../src/rag/evals/) | 4 ✅ |
+| Serve (web UI) | – | 5 ⏳ |
 
 The corpus is the English Kubernetes documentation, about 1,500 Markdown pages. It is
 realistic: messy markup, many near-duplicate topics, and users ask real operational questions.
