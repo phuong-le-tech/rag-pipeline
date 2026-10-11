@@ -24,7 +24,8 @@ class Settings(BaseSettings):
     embedding_threads: int | None = Field(default=None, gt=0)
     reranker_model: str = "Xenova/ms-marco-MiniLM-L-6-v2"
 
-    llm_backend: Literal["anthropic", "openrouter", "fake"] = "anthropic"
+    # Free OpenRouter model by default (cost); anthropic stays available for quality runs.
+    llm_backend: Literal["anthropic", "openrouter", "fake"] = "openrouter"
     llm_model: str = "claude-sonnet-5-5"  # used by the anthropic backend
     llm_max_tokens: int = Field(default=1024, gt=0)
     # Per-request timeout. SDK defaults are ~10 min, so one stuck connection stalls a batch job.

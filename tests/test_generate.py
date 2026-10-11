@@ -261,3 +261,10 @@ def test_make_generator_openrouter_uses_its_base_url_and_model():
     assert isinstance(gen, OpenAICompatibleGenerator)
     assert gen.model == "google/gemma-4-31b-it:free"
     assert gen.base_url == "https://openrouter.ai/api/v1"
+
+
+def test_default_backend_is_free_openrouter_model(monkeypatch):
+    monkeypatch.delenv("RAG_LLM_BACKEND", raising=False)
+    settings = Settings(_env_file=None)
+    assert settings.llm_backend == "openrouter"
+    assert settings.openrouter_model.endswith(":free")

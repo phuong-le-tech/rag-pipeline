@@ -2,6 +2,14 @@
 
 Newest first. Each entry: context, decision, consequences. Revisit when evals say otherwise.
 
+## 2026-10-11: Free OpenRouter model is the default LLM backend
+- **Context**: Claude Sonnet costs too much for everyday use and demos.
+- **Decision**: `RAG_LLM_BACKEND` defaults to `openrouter` with
+  `nvidia/nemotron-3-super-120b-a12b:free`; `anthropic` stays selectable per run.
+- **Consequence**: $0 per answer, but rate limits (1,000 requests/day with credits) and possible
+  prompt logging. Phase 4 numbers already came from Nemotron answers, so defaults stay valid;
+  the Sonnet judge for `eval-answers` is now opt-in via `--judge-backend anthropic`.
+
 ## 2026-10-11: Phase 5 UI in Next.js; Markdown uploads first
 - **Context**: the glass-box demo is shown in interviews, so it must look polished; every new
   input format needs its own loader.

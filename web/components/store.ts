@@ -53,7 +53,7 @@ export const newStore = (): Store => ({
 
 export const freshIng = (): Ing => ({ parse: { st: "waiting" }, chunk: { st: "waiting" }, embed: { st: "waiting" }, index: { st: "waiting" } });
 
-export const MODEL = "claude-sonnet-5-5";
+export const MODEL = "nemotron-3-super:free";
 export const STL: Record<StageState, string> = { waiting: "Waiting", running: "Running", done: "Done", error: "Error", skipped: "Skipped" };
 export const fmtMs = (n: number) => Math.round(n).toLocaleString("en-US") + " ms";
 export const fmtSize = (b: number) => (b < 1024 ? b + " B" : b < 1048576 ? (b / 1024).toFixed(1) + " KB" : (b / 1048576).toFixed(1) + " MB");

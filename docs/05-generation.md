@@ -88,8 +88,8 @@ Each LLM wrapper is a few dozen lines: one request shape, `generate()` for a ful
 
 | Backend | Class | Model setting | Key | Cost |
 |---|---|---|---|---|
-| `anthropic` (default) | `ClaudeGenerator` | `RAG_LLM_MODEL` (`claude-sonnet-5-5`) | `ANTHROPIC_API_KEY` | ~1.2¢ per answer on Sonnet |
-| `openrouter` | `OpenAICompatibleGenerator` | `RAG_OPENROUTER_MODEL` (`nvidia/nemotron-3-super-120b-a12b:free`) | `OPENROUTER_API_KEY` | free tier: rate-limited, prompts may be logged |
+| `anthropic` | `ClaudeGenerator` | `RAG_LLM_MODEL` (`claude-sonnet-5-5`) | `ANTHROPIC_API_KEY` | ~1.2¢ per answer on Sonnet |
+| `openrouter` (default since 2026-10-11) | `OpenAICompatibleGenerator` | `RAG_OPENROUTER_MODEL` (`nvidia/nemotron-3-super-120b-a12b:free`) | `OPENROUTER_API_KEY` | free tier: rate-limited, prompts may be logged |
 | `fake` | `FakeGenerator` | – | – | tests only |
 
 `OpenAICompatibleGenerator` speaks the OpenAI Chat Completions format, which most providers

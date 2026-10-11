@@ -32,7 +32,8 @@ uv run pytest                             # tests (DB tests skip if Postgres is 
 ```
 
 Put keys in a local `.env` (gitignored, never commit it): `ANTHROPIC_API_KEY=...` for Claude, or
-`OPENROUTER_API_KEY=...` plus `RAG_LLM_BACKEND=openrouter` for OpenRouter models.
+`OPENROUTER_API_KEY=...` (default backend: a free OpenRouter model), or `ANTHROPIC_API_KEY=...`
+plus `RAG_LLM_BACKEND=anthropic` for Claude.
 
 ### Commands
 
@@ -70,7 +71,7 @@ Environment variables or `.env`, prefix `RAG_` (keys have no prefix):
 | `RAG_EMBEDDING_DIM` | `384` (1536 for OpenAI) |
 | `RAG_EMBEDDING_THREADS` | unset (ONNX decides; 6 was fastest on an M4) |
 | `RAG_RERANKER_MODEL` | `Xenova/ms-marco-MiniLM-L-6-v2` |
-| `RAG_LLM_BACKEND` | `anthropic` (`openrouter`, `fake`) |
+| `RAG_LLM_BACKEND` | `openrouter` (`anthropic`, `fake`) |
 | `RAG_LLM_MODEL` | `claude-sonnet-5-5` (Anthropic backend) |
 | `RAG_OPENROUTER_MODEL` | `nvidia/nemotron-3-super-120b-a12b:free` |
 | `RAG_LLM_TIMEOUT_S` | `60` |
