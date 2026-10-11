@@ -8,7 +8,8 @@ hybrid search (pgvector + Postgres full-text, fused with RRF), cross-encoder rer
 with validated `[n]` citations and refusal, and an evaluation harness behind every default.
 
 > Status: Phases 1–4 complete (ingestion, retrieval, cited generation, evaluation).
-> Next: a "glass-box" web UI that shows each pipeline step live. See [Roadmap](#roadmap).
+> Phase 5 in progress: the "glass-box" web UI ([`web/`](web/)) runs on an in-browser mock
+> engine; wiring it to the real pipeline over FastAPI is next. See [Roadmap](#roadmap).
 
 **New to RAG?** The [docs](docs/README.md) explain every stage (concept, code, trade-offs,
 experiments) and record every measured decision.
@@ -46,6 +47,16 @@ Put keys in a local `.env` (gitignored, never commit it): `ANTHROPIC_API_KEY=...
 | `rag eval-answers [--config NAME] [--judge-backend B]` | Faithfulness, correctness, citations, refusals (LLM judge) |
 | `rag draft-questions --n N --seed S` | LLM-drafted golden questions (resumable) |
 | `rag review-drafts` | Human review of drafts: y / e / n / q (resumable) |
+
+### Web UI (prototype)
+
+```bash
+cd web && npm install && npm run dev    # http://localhost:3000 (Node 22+)
+npm test                                # mock-engine unit tests
+```
+
+Demo states: `/#ingesting` (ingest mid-run), `/#answer` (full cited answer). Retrieval in the UI
+is still simulated in the browser (`web/lib/mockEngine.ts`); numbers shown are illustrative.
 
 ### Configuration
 
@@ -95,6 +106,7 @@ src/rag/
   evals/               metrics.py, golden.py, runner.py, drafting.py, review.py, judge.py, answers.py
 evals/                 golden.jsonl, unanswerable.jsonl, draft review audit trail (results gitignored)
 docs/                  learning docs: one chapter per stage, decision log, glossary
+web/                   Next.js glass-box UI (components/, lib/mockEngine.ts stand-in engine)
 scripts/               fetch_corpus.sh
 data/                  corpus and logs (gitignored)
 ```
@@ -108,6 +120,7 @@ data/                  corpus and logs (gitignored)
       measured defaults, CI
 - [ ] Phase 5: glass-box web UI: upload a file, URL or text, watch chunking and embedding live,
       ask with visible retrieval steps and clickable citations; deploy
+      (UI built on a mock engine; FastAPI + SSE wiring next)
 - [ ] Phase 6: polish: demo GIF, diagrams, failure-analysis write-up
 
 ## Results

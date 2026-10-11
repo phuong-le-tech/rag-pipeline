@@ -20,7 +20,7 @@ Each chapter follows the same shape:
 | 4 | [Retrieval: dense, keyword, hybrid, RRF, reranking](04-retrieval.md) | ✅ |
 | 5 | [Generation: grounded prompts, citations, refusal](05-generation.md) | ✅ |
 | 6 | [Evaluation: golden sets, metrics, ablations](06-evaluation.md) | ✅ |
-| 7 | Serving: API, streaming, cost, deployment | ⏳ Phase 5 |
+| 7 | [Serving: the glass-box UI, API, streaming](07-serving.md) | 🚧 Phase 5 |
 
 Reference:
 

@@ -14,7 +14,7 @@ ablation table is the centrepiece of the README.
 | Embeddings | Local `BAAI/bge-small-en-v1.5` (384d, fastembed); OpenAI `text-embedding-3-small` kept as ablation row
 | Reranker | Local `bge-reranker-v2-m3` (sentence-transformers), Cohere-swappable |
 | LLM | Claude via Anthropic SDK behind a `Generator` protocol |
-| UI | FastAPI + small Next.js page |
+| UI | Next.js (Open Design, Linear-inspired) + FastAPI SSE backend; Markdown uploads first |
 
 ## Patterns to Mirror
 | Category | Source | Pattern |
@@ -68,7 +68,8 @@ ablation table is the centrepiece of the README.
 - [x] CI: lint + unit + pgvector integration tests
 
 ### Phase 5 — API + UI + deploy (M) — "glass-box RAG" demo (agreed 2026-10-10, after Phase 4)
-- Open decisions (owner): Next.js vs lighter FastAPI-served UI; add .docx?
+- Decided 2026-10-11: Next.js UI + FastAPI SSE; Markdown uploads first, other formats later
+- [x] UI shell in `web/`, ported from the Open Design prototype, running on a mock engine
 - [ ] Pipeline emits structured progress events (stage, progress, timing) usable by CLI and API
 - [ ] `collection` column + retrieval filter: uploads never mix with the k8s index or evals
 - [ ] Loaders: PDF (pypdf), URL (trafilatura, SSRF-safe: block private IPs, size/time limits), pasted text

@@ -41,6 +41,8 @@ uv run rag review-drafts                  # human review: y/e/n/q, resumable, ap
 uv run ruff format . && uv run ruff check --no-cache .   # --no-cache: match CI exactly
 uv run pytest -m "not integration" --cov=rag   # unit tests
 uv run pytest -m integration                   # needs compose DB
+cd web && npm install && npm run dev           # glass-box UI, http://localhost:3000
+cd web && npm test && npm run build            # mock-engine tests + production build
 ```
 Long LLM or ingest jobs run in the background with output to `data/*.log`; never poll with sleep.
 
@@ -73,6 +75,10 @@ Long LLM or ingest jobs run in the background with output to `data/*.log`; never
   draft-questions, review-drafts. `ask_config()` holds the measured `rag ask` defaults.
 - `evals/`: `golden.jsonl` (94: 25 human, 69 reviewed LLM drafts tagged `reviewer:…`),
   `unanswerable.jsonl` (15), `drafts*.jsonl/.txt` (audit trail); `evals/results/` gitignored
+- `web/`: Next.js 16 / React 19 UI ported from the Open Design prototype. `app/globals.css` is
+  the design's CSS verbatim (tokens on `:root`, dark default); `components/GlassBox.tsx` holds
+  a mutable view-model + actions (mirrors the prototype), `Panels.tsx` / `Overlays.tsx` render;
+  `lib/mockEngine.ts` simulates retrieval in the browser until the FastAPI SSE client replaces it.
 - Integration tests use a separate `rag_test` DB created by `tests/conftest.py` (dim 8);
   they never touch the real index and skip if Postgres is down.
 
