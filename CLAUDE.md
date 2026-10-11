@@ -7,8 +7,9 @@ every default. The owner is learning RAG through this project and will demo it i
 ## Before any work
 - Read `.claude/plans/rag-pipeline.plan.md`: phases, decisions, risks. Tick boxes as tasks land.
 - **Status: Phases 1–4 done. Next: Phase 5, the "glass-box" web UI** (upload file/URL/text,
-  live pipeline progress, visible retrieval steps, clickable citations). Its open decisions
-  (Next.js vs FastAPI-served UI, `.docx` support) are the owner's to make: ask first.
+  live pipeline progress, visible retrieval steps, clickable citations). Decided: Next.js
+  frontend (designed by the owner in Open Design) + FastAPI backend with SSE; Markdown uploads
+  only in the first version, other formats later.
 - Work the current phase in order; do not start a later phase without being asked.
 
 ## Docs are a deliverable

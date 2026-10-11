@@ -2,6 +2,15 @@
 
 Newest first. Each entry: context, decision, consequences. Revisit when evals say otherwise.
 
+## 2026-10-11: Phase 5 UI in Next.js; Markdown uploads first
+- **Context**: the glass-box demo is shown in interviews, so it must look polished; every new
+  input format needs its own loader.
+- **Decision**: Next.js frontend (design generated with Open Design) talking to a FastAPI
+  backend that streams pipeline progress over server-sent events. First version accepts
+  Markdown only, which the current loader already handles; PDF, URL and pasted text come later.
+- **Consequence**: two apps and two languages to build and deploy, in exchange for a stronger
+  UI. Markdown-only keeps the first slice about streaming and visibility, not parsing.
+
 ## 2026-10-11: No reranker-score refusal threshold; Sonnet judge with repair fallback
 - **Context**: answer evals (Nemotron answers, Sonnet judge). The model refused 14/15
   unanswerable questions on its own; false-premise questions get *high* reranker scores.
