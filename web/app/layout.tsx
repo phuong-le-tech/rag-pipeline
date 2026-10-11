@@ -12,7 +12,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
-      <body>{children}</body>
+      {/* Browser extensions inject attributes on <body> before hydration. */}
+      <body suppressHydrationWarning>{children}</body>
     </html>
   );
 }
