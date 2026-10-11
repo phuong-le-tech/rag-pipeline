@@ -75,6 +75,22 @@ Long LLM or ingest jobs run in the background with output to `data/*.log`; never
 - Integration tests use a separate `rag_test` DB created by `tests/conftest.py` (dim 8);
   they never touch the real index and skip if Postgres is down.
 
+## Skills (invoke the matching one before starting; don't skip)
+- New feature or behaviour change: `superpowers:brainstorming` first, then
+  `superpowers:writing-plans` for anything multi-step.
+- Writing code: `superpowers:test-driven-development` (the TDD rule below); keep diffs minimal
+  (`ponytail`).
+- Bug, failing test or surprising eval number: `superpowers:systematic-debugging` before any fix.
+- User input, uploads, URL fetching (Phase 5 loaders, API): `security-and-hardening`.
+- UI work (Phase 5): `ui-ux-pro-max`, then `web-design-guidelines` to check it.
+- Latency work (reranker, ingest, API): `performance-optimization`; measure before and after.
+- Logging, progress events, tracing: `observability-and-instrumentation`.
+- A real design choice: `documentation-and-adrs` → entry in `docs/decisions.md`.
+- Commits and branches: `git-workflow-and-versioning`.
+- After each task, before committing: `ponytail:ponytail-review` or `/code-review` on the diff.
+- Before saying "done": `superpowers:verification-before-completion` (run tests, show output).
+- Codebase questions: `graphify` query first when `graphify-out/graph.json` exists.
+
 ## Conventions
 - TDD: write the failing test first, run it, then implement. Coverage ≥ 80%.
 - Tests in `tests/test_<module>.py`, Arrange-Act-Assert; `CliRunner` + `monkeypatch` for
