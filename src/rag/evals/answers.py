@@ -213,6 +213,23 @@ def _summary(
     }
 
 
+def _load_checkpoint(path: Path) -> dict[str, AnswerResult]:
+    """Results saved by an interrupted run, keyed by id; a missing file means nothing saved yet."""
+    if not path.exists():
+        return {}
+    rows = [
+        json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
+    ]
+    loaded = [AnswerResult(**{**row, "unsupported": tuple(row["unsupported"])}) for row in rows]
+    return {r.id: r for r in loaded}
+
+
+def _append_checkpoint(path: Path, result: AnswerResult) -> None:
+    with path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(asdict(result)) + "\n")
+        f.flush()
+
+
 def evaluate_answers(
     golden: Sequence[GoldenItem],
     unanswerable: Sequence[UnanswerableItem],
@@ -222,15 +239,23 @@ def evaluate_answers(
     on_progress: Callable[[int, int], None] | None = None,
     price_in: float = 0.0,
     price_out: float = 0.0,
+    checkpoint: Path | None = None,
 ) -> AnswerReport:
     jud = RetryingGenerator(judge, sleep) if judge is not None else None
     jobs = [("answerable", g.id, g.origin, g.question, g.reference_answer) for g in golden] + [
         ("unanswerable", u.id, u.origin, u.question, None) for u in unanswerable
     ]
+    loaded = _load_checkpoint(checkpoint) if checkpoint is not None else {}
     results = []
     for done, (kind, item_id, origin, question, reference) in enumerate(jobs, start=1):
-        judge_for = jud if kind == "answerable" else None
-        results.append(_answer_one(item_id, kind, origin, question, reference, answerer, judge_for))
+        if item_id in loaded:
+            results.append(loaded[item_id])
+        else:
+            judge_for = jud if kind == "answerable" else None
+            result = _answer_one(item_id, kind, origin, question, reference, answerer, judge_for)
+            if checkpoint is not None:
+                _append_checkpoint(checkpoint, result)
+            results.append(result)
         if on_progress is not None:
             on_progress(done, len(jobs))
     judged_expected = judge is not None

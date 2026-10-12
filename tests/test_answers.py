@@ -1,4 +1,5 @@
 import json
+from dataclasses import asdict, replace
 
 import pytest
 
@@ -414,3 +415,123 @@ def test_pipeline_answerer_tokens_are_none_when_provider_reports_nothing():
         pipeline_answerer(retriever, generator, RetrieverConfig())("roll back?").input_tokens
         is None
     )
+
+
+def _resume_stack():
+    retriever = StubRetriever(
+        {
+            q: [hit(1), hit(2)]
+            for q in ["roll back?", "cpu usage?", "drain?", "lambda timeout?", "sourdough?"]
+        }
+    )
+    generator = ByQuestionGenerator(
+        {
+            "roll back?": "Use rollout undo [1]. Check status [2].",
+            "cpu usage?": "Run kubectl top pod [1]. It lists all pods.",
+            "drain?": REFUSAL,
+            "lambda timeout?": "Set it in the console [7].",
+            "sourdough?": REFUSAL,
+        }
+    )
+    verdicts = {
+        "roll back?": json.dumps(
+            {"claims": [{"text": "a", "supported": True}] * 2, "correct": "yes"}
+        ),
+        "cpu usage?": json.dumps(
+            {
+                "claims": [
+                    {"text": "top pod", "supported": True},
+                    {"text": "lists all pods", "supported": False},
+                ],
+                "correct": "partial",
+            }
+        ),
+    }
+    return retriever, generator, verdicts
+
+
+def _without_latency(report):
+    def keep(summary):
+        return {k: v for k, v in summary.items() if "latency" not in k}
+
+    results = [replace(r, latency_ms=0.0) for r in report.results]
+    return results, keep(report.summary), {o: keep(s) for o, s in report.by_origin.items()}
+
+
+def test_resume_after_interruption_answers_only_remaining_questions(tmp_path):
+    checkpoint = tmp_path / "run.partial.jsonl"
+    retriever, generator, verdicts = _resume_stack()
+    answerer = pipeline_answerer(retriever, generator, RetrieverConfig())
+
+    def crashing(question):
+        if question == "drain?":
+            raise RuntimeError("network down")
+        return answerer(question)
+
+    judge = StubJudge(verdicts)
+    with pytest.raises(RuntimeError):
+        evaluate_answers(
+            GOLDEN,
+            UNANSWERABLE,
+            crashing,
+            judge,
+            sleep=lambda _s: None,
+            checkpoint=checkpoint,
+        )
+    assert judge.calls == 2
+    saved = [json.loads(line) for line in checkpoint.read_text().splitlines()]
+    assert [r["id"] for r in saved] == ["g1", "g2"]
+
+    asked = []
+    progress = []
+
+    def recording(question):
+        asked.append(question)
+        return answerer(question)
+
+    resumed_judge = StubJudge(verdicts)
+    resumed = evaluate_answers(
+        GOLDEN,
+        UNANSWERABLE,
+        recording,
+        resumed_judge,
+        sleep=lambda _s: None,
+        on_progress=lambda done, total: progress.append((done, total)),
+        checkpoint=checkpoint,
+    )
+
+    assert asked == ["drain?", "sourdough?", "lambda timeout?"]
+    assert resumed_judge.calls == 0  # g1 and g2 were judged before the interruption
+    assert progress[-1] == (5, 5)
+    saved = [json.loads(line) for line in checkpoint.read_text().splitlines()]
+    assert [r["id"] for r in saved] == ["g1", "g2", "g3", "u1", "u2"]
+    assert all(isinstance(r["unsupported"], list) for r in saved)
+
+    uninterrupted = evaluate_answers(
+        GOLDEN,
+        UNANSWERABLE,
+        pipeline_answerer(retriever, generator, RetrieverConfig()),
+        StubJudge(verdicts),
+        sleep=lambda _s: None,
+    )
+    assert [r.id for r in resumed.results] == ["g1", "g2", "g3", "u1", "u2"]
+    assert _without_latency(resumed) == _without_latency(uninterrupted)
+
+
+def test_checkpoint_lines_for_unknown_ids_are_ignored(tmp_path):
+    checkpoint = tmp_path / "run.partial.jsonl"
+    checkpoint.write_text(json.dumps(asdict(result(id="gone"))) + "\n\n")
+    retriever, generator, verdicts = _resume_stack()
+
+    report = evaluate_answers(
+        GOLDEN[:1],
+        [],
+        pipeline_answerer(retriever, generator, RetrieverConfig()),
+        StubJudge(verdicts),
+        sleep=lambda _s: None,
+        checkpoint=checkpoint,
+    )
+
+    assert [r.id for r in report.results] == ["g1"]
+    ids = [json.loads(line)["id"] for line in checkpoint.read_text().splitlines() if line.strip()]
+    assert ids == ["gone", "g1"]

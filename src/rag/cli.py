@@ -297,11 +297,18 @@ def eval_answers_cmd(
     corpus: Annotated[Path, typer.Option(help="Corpus root (for CORPUS_REF).")] = Path(
         "data/k8s-docs"
     ),
+    resume: Annotated[
+        Path | None, typer.Option(help="Checkpoint of an interrupted run to continue.")
+    ] = None,
 ) -> None:
     """Generate answers, grade them with an LLM judge, check citations and refusals."""
     if config not in ABLATIONS:
         raise typer.BadParameter(f"unknown config {config!r}; choose from {list(ABLATIONS)}")
     settings = Settings()
+    timestamp = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    out.mkdir(parents=True, exist_ok=True)
+    checkpoint = resume or out / f"{timestamp.replace(':', '-')}-answers.partial.jsonl"
+    typer.echo(f"Checkpoint: {checkpoint}", err=True)
     judge_settings = settings.model_copy(
         update={"llm_backend": judge_backend or settings.llm_backend}
     )
@@ -327,6 +334,7 @@ def eval_answers_cmd(
                 answerer,
                 make_generator(judge_settings),
                 on_progress=lambda done, total: typer.echo(f"  {done}/{total}", err=True),
+                checkpoint=checkpoint,
             )
         except (anthropic.AnthropicError, openai.OpenAIError) as exc:
             typer.secho(f"LLM call failed: {exc}", fg="red", err=True)
@@ -335,7 +343,7 @@ def eval_answers_cmd(
 
     ref_file = corpus / "CORPUS_REF"
     meta = {
-        "timestamp": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "timestamp": timestamp,
         "corpus_ref": ref_file.read_text().strip() if ref_file.exists() else "unknown",
         "fingerprint": settings.pipeline_fingerprint(),
         "retrieval": config,
