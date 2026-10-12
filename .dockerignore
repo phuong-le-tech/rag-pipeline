@@ -1,0 +1,10 @@
+.venv
+data
+evals
+web
+docs
+tests
+.git
+.env
+.superpowers
+**/__pycache__
