@@ -29,7 +29,7 @@ experiments) and record every measured decision.
 [How it works](#how-it-works) · [Results](#results) · [Getting started](#getting-started) ·
 [CLI](#cli) · [API](#api) · [Configuration](#configuration) · [Deployment](#deployment) ·
 [Security and privacy](#security-and-privacy) · [Testing](#testing) · [Project layout](#project-layout) ·
-[Limitations](#limitations) · [Roadmap](#roadmap) · [Credits](#credits)
+[Limitations](#limitations) · [Credits](#credits)
 
 ## How it works
 
@@ -270,16 +270,6 @@ Dockerfile, railway.json, docker-compose.yml
   provider may log prompts. Set `RAG_LLM_BACKEND=anthropic` for Claude.
 - **No authentication**: the API is public by design and protected only by the guards above.
 - **Stage events arrive together** once retrieval finishes (~1.5 s), then the answer streams.
-
-## Roadmap
-
-- [x] Phase 1: corpus, loader, chunker, local embeddings, incremental ingestion
-- [x] Phase 2: dense, keyword, hybrid (RRF), cross-encoder reranking
-- [x] Phase 3: grounded prompt, validated citations, refusal, Claude / OpenRouter
-- [x] Phase 4: golden set, retrieval ablations, answer-level LLM judge, measured defaults, CI
-- [x] Phase 5a: glass-box UI on the real pipeline, production API, privacy pages, deploy config
-- [ ] Phase 5b: upload your own Markdown, then PDF, URL and pasted text
-- [ ] Phase 6: demo GIF, diagrams, failure-analysis write-up
 
 ## Credits
 

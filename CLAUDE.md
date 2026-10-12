@@ -21,7 +21,8 @@ every default. The owner is learning RAG through this project and will demo it i
   log is history: add entries, don't rewrite old ones.
 - Starting a new phase means writing its chapter (Phase 5 → `07-serving.md`).
 - Explain the *why* for a learner: plain language, small examples, no copy-pasted API docs.
-- Keep README's Status, Commands, Configuration, Layout and Roadmap in sync with the code.
+- Keep README's highlights, CLI, API, Configuration, Deployment and Layout in sync with the code
+  (no roadmap in the README; phases live in `.claude/plans/rag-pipeline.plan.md`).
 
 ## Commands
 ```bash
