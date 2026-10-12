@@ -3,7 +3,7 @@ from types import SimpleNamespace
 import pytest
 
 from rag.config import Settings
-from rag.generate.answer import REFUSAL, answer_question
+from rag.generate.answer import REFUSAL, Answer, answer_question, stream_answer
 from rag.generate.citations import check_citations, parse_citations
 from rag.generate.generator import (
     ClaudeGenerator,
@@ -268,3 +268,21 @@ def test_default_backend_is_free_openrouter_model(monkeypatch):
     settings = Settings(_env_file=None)
     assert settings.llm_backend == "openrouter"
     assert settings.openrouter_model.endswith(":free")
+
+
+STREAM_HIT = Hit(1, 0.9, "a.md", "https://x/a", "A", "A > B", "Use rollout undo.", False)
+
+
+def test_stream_answer_yields_tokens_then_answer():
+    gen = FakeGenerator("Use rollout undo [1].")
+    items = list(stream_answer("How to roll back?", (STREAM_HIT,), gen))
+    assert items[0] == "Use rollout undo [1]."
+    final = items[-1]
+    assert isinstance(final, Answer) and not final.refused
+    assert final.sources[0].hit == STREAM_HIT
+
+
+def test_stream_answer_without_hits_refuses_without_llm():
+    gen = FakeGenerator()
+    items = list(stream_answer("q", (), gen))
+    assert len(items) == 1 and items[0].refused and gen.calls == []
