@@ -1,6 +1,11 @@
 import type { NextConfig } from "next";
 
 const api = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+// The legal notice and privacy page must name a publisher and a contact in production (GDPR art. 13).
+if (process.env.VERCEL_ENV === "production") {
+  const missing = ["NEXT_PUBLIC_PUBLISHER_NAME", "NEXT_PUBLIC_CONTACT_EMAIL", "NEXT_PUBLIC_API_URL"].filter((k) => !process.env[k]);
+  if (missing.length) throw new Error(`Missing production env: ${missing.join(", ")}`);
+}
 const dev = process.env.NODE_ENV !== "production";
 const csp = [
   "default-src 'self'",

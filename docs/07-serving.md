@@ -72,10 +72,14 @@ A public demo will meet bots and enthusiastic testers. Each guard answers one fa
 | Guard | Default | Protects against |
 |---|---|---|
 | Input validation | 1–500 chars, `k` 3–10 | huge prompts, nonsense configs (HTTP 422) |
-| Rate limit per IP | 10 / minute | one person or bot hammering the API (HTTP 429 + `Retry-After`) |
+| Rate limit per IP | 10 / minute | one person or bot hammering the API (HTTP 429 + `Retry-After`). Keyed on the *last* `X-Forwarded-For` entry, the one Railway's edge adds: earlier entries are written by the client and could be forged |
 | Daily LLM budget | 300 calls / UTC day | draining the OpenRouter credits; retrieval keeps working |
 | Concurrency cap | 2 asks at once | CPU exhaustion: the reranker uses all cores (HTTP 503 "busy") |
 | CORS | only `RAG_CORS_ORIGINS` | other websites using the API from visitors' browsers |
+
+A slot is released by the stream's `finally` *and* when the stream object is garbage-collected:
+a client that disconnects before the first byte makes Starlette drop the stream unstarted, and
+without the second path that slot would be lost until a restart (found in review, now tested).
 
 They live in process memory: simple and correct for **one replica**. Two replicas would each
 count separately; that's when Redis would be needed.

@@ -152,7 +152,8 @@ through the repo.
    `NEXT_PUBLIC_PUBLISHER_NAME`, `NEXT_PUBLIC_CONTACT_EMAIL`. Deploy (env changes need a redeploy:
    `NEXT_PUBLIC_*` values are inlined at build time).
 5. **Check**: `curl https://<api-domain>/ready` → chunk count; open the site and ask a question;
-   ask 11 questions within a minute → the 11th is rate-limited.
+   ask 11 questions within a minute → the 11th is rate-limited; from another network (phone on
+   mobile data) you can still ask, which confirms the limiter sees real client IPs.
 
 ## Results
 

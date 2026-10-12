@@ -5,6 +5,7 @@ import logging
 import threading
 import time
 import uuid
+import weakref
 from collections.abc import Callable, Iterator
 from contextlib import AbstractContextManager, asynccontextmanager, contextmanager
 from dataclasses import dataclass, replace
@@ -96,7 +97,7 @@ def run_ask(
     config: RetrieverConfig,
     services: Services,
     budget: DailyBudget,
-    slots: threading.Semaphore,
+    release: Callable[[], None],
 ) -> Iterator[str]:
     """One ask as SSE: stages, tokens, then done or error. Always releases its slot."""
     rid, start = uuid.uuid4().hex[:8], time.perf_counter()
@@ -148,8 +149,29 @@ def run_ask(
         message = LLM_FAILED_MSG if generating else SERVER_FAILED_MSG
         yield sse("error", {"code": status, "message": message})
     finally:
-        slots.release()
+        release()
         log.info(json.dumps({"id": rid, "status": status, "ms": timings}))
+
+
+def client_key(request: Request) -> str:
+    """Rate-limit key: the last X-Forwarded-For entry, the one the edge proxy (Railway) appends.
+    Earlier entries are client-controlled and would let anyone mint fresh buckets."""
+    forwarded = request.headers.get("x-forwarded-for", "")
+    last = forwarded.rsplit(",", 1)[-1].strip()
+    return last or (request.client.host if request.client else "?")
+
+
+def slot_releaser(slots: threading.Semaphore) -> Callable[[], None]:
+    """Idempotent release: the stream's ``finally`` and garbage collection may both call it."""
+    lock, held = threading.Lock(), [True]
+
+    def release() -> None:
+        with lock:
+            if held[0]:
+                held[0] = False
+                slots.release()
+
+    return release
 
 
 def create_app(settings: Settings, services: Services | None = None) -> FastAPI:
@@ -203,7 +225,7 @@ def create_app(settings: Settings, services: Services | None = None) -> FastAPI:
 
     @app.post("/api/ask")
     def ask(body: AskRequest, request: Request):
-        wait = request.app.state.limiter.check(request.client.host if request.client else "?")
+        wait = request.app.state.limiter.check(client_key(request))
         if wait:
             return JSONResponse(
                 {"error": "rate_limited", "retry_after": wait},
@@ -216,10 +238,15 @@ def create_app(settings: Settings, services: Services | None = None) -> FastAPI:
         config = ask_config(k=body.k, rerank=body.rerank, generated=True, rewrite=False)
         if not body.max_one_per_page:
             config = replace(config, max_per_source=None)
+        release = slot_releaser(slots)
+        stream = run_ask(
+            body.question, config, request.app.state.services, request.app.state.budget, release
+        )
+        # A client that disconnects before the first chunk makes Starlette drop the generator
+        # unstarted, so its `finally` never runs; release the slot when it is collected.
+        weakref.finalize(stream, release)
         return StreamingResponse(
-            run_ask(
-                body.question, config, request.app.state.services, request.app.state.budget, slots
-            ),
+            stream,
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )

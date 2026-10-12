@@ -12,6 +12,6 @@ from rag.retrieval.rerank import make_reranker; s = Settings(_env_file=None); \
 make_embedder(s).embed_query('x'); make_reranker(s).model"
 RUN useradd --create-home app && chown -R app /app /models
 USER app
-# --proxy-headers: real client IP behind Railway's proxy (rate limiting).
+# The rate limiter reads the client IP from the last X-Forwarded-For entry (rag.api.app.client_key).
 # --no-access-log: access lines contain IPs; the app logs one JSON line per ask instead.
-CMD ["sh", "-c", "exec uv run --no-sync uvicorn rag.api.app:main --factory --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips='*' --no-access-log"]
+CMD ["sh", "-c", "exec uv run --no-sync uvicorn rag.api.app:main --factory --host 0.0.0.0 --port ${PORT:-8000} --no-access-log"]

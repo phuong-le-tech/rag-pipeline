@@ -16,6 +16,9 @@ class RateLimiter:
 
     def check(self, key: str) -> int:
         now = self.clock()
+        # Forget clients idle for a minute, so the map can't grow without bound.
+        for k in [k for k, w in self.calls.items() if now - w[-1] >= 60]:
+            del self.calls[k]
         window = self.calls.setdefault(key, deque())
         while window and now - window[0] >= 60:
             window.popleft()

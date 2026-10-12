@@ -138,3 +138,60 @@ def test_cors_allows_only_configured_origin():
     )
     assert ok.headers.get("access-control-allow-origin") == "https://demo.example"
     assert "access-control-allow-origin" not in bad.headers
+
+
+def test_slot_released_when_client_disconnects_before_stream_starts():
+    import asyncio
+    import gc
+
+    client = make_client(max_concurrent_asks=1)
+    app = client.app
+    body = json.dumps({"question": "a"}).encode()
+    messages = [{"type": "http.request", "body": body, "more_body": False}]
+
+    async def receive():
+        return messages.pop(0) if messages else {"type": "http.disconnect"}
+
+    async def send(message):
+        pass
+
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0", "spec_version": "2.3"},
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "http",
+        "path": "/api/ask",
+        "raw_path": b"/api/ask",
+        "query_string": b"",
+        "root_path": "",
+        "client": ("1.2.3.4", 1),
+        "server": ("t", 80),
+        "headers": [(b"content-type", b"application/json"), (b"host", b"t")],
+    }
+    asyncio.run(app(scope, receive, send))
+    gc.collect()
+    assert app.state.slots.acquire(blocking=False), "slot leaked after early disconnect"
+
+
+def test_rate_limit_ignores_client_forged_forwarded_for():
+    c = make_client(rate_limit_per_minute=1)
+    # The edge proxy appends the real client IP last; earlier entries are client-controlled.
+    first = c.post(
+        "/api/ask", json={"question": "a"}, headers={"X-Forwarded-For": "10.0.0.1, 203.0.113.9"}
+    )
+    forged = c.post(
+        "/api/ask", json={"question": "a"}, headers={"X-Forwarded-For": "10.0.0.2, 203.0.113.9"}
+    )
+    other = c.post("/api/ask", json={"question": "a"}, headers={"X-Forwarded-For": "203.0.113.10"})
+    assert first.status_code == 200 and forged.status_code == 429
+    assert other.status_code == 200  # a different real client has its own budget
+
+
+def test_rate_limiter_forgets_idle_clients():
+    t = [0.0]
+    rl = RateLimiter(per_minute=1, clock=lambda: t[0])
+    rl.check("a")
+    t[0] = 61.0
+    rl.check("b")
+    assert "a" not in rl.calls
