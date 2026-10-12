@@ -1,5 +1,6 @@
 import json
 import time
+from dataclasses import asdict, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
@@ -23,6 +24,7 @@ from rag.db import connect, init_db
 from rag.embed import make_embedder
 from rag.evals.answers import (
     RetryingGenerator,
+    agent_answerer,
     answers_markdown,
     evaluate_answers,
     pipeline_answerer,
@@ -298,23 +300,49 @@ def eval_answers_cmd(
         "data/k8s-docs"
     ),
     resume: Annotated[
-        Path | None, typer.Option(help="Checkpoint of an interrupted run to continue.")
+        Path | None,
+        typer.Option(
+            exists=True, dir_okay=False, help="Checkpoint of an interrupted run to continue."
+        ),
     ] = None,
+    mode: Annotated[
+        str, typer.Option(help="pipeline (fixed retrieve-then-answer) | agent (LLM searches).")
+    ] = "pipeline",
+    k: Annotated[
+        int | None, typer.Option(min=1, help="Passages per search (default: the config's k).")
+    ] = None,
+    judge_model: Annotated[
+        str | None, typer.Option(help="Judge model id (default: the judge backend's model).")
+    ] = None,
+    price_in: Annotated[float, typer.Option(help="USD per million input tokens.")] = 0.0,
+    price_out: Annotated[float, typer.Option(help="USD per million output tokens.")] = 0.0,
 ) -> None:
     """Generate answers, grade them with an LLM judge, check citations and refusals."""
     if config not in ABLATIONS:
         raise typer.BadParameter(f"unknown config {config!r}; choose from {list(ABLATIONS)}")
+    if mode not in ("pipeline", "agent"):
+        raise typer.BadParameter(f"unknown mode {mode!r}; choose pipeline or agent")
     settings = Settings()
     timestamp = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     out.mkdir(parents=True, exist_ok=True)
     checkpoint = resume or out / f"{timestamp.replace(':', '-')}-answers.partial.jsonl"
     typer.echo(f"Checkpoint: {checkpoint}", err=True)
-    judge_settings = settings.model_copy(
-        update={"llm_backend": judge_backend or settings.llm_backend}
-    )
+    judge_backend_name = judge_backend or settings.llm_backend
+    judge_updates: dict[str, str] = {"llm_backend": judge_backend_name}
+    if judge_model:
+        model_field = {"openrouter": "openrouter_model", "anthropic": "llm_model"}.get(
+            judge_backend_name
+        )
+        if model_field:
+            judge_updates[model_field] = judge_model
+    judge_settings = settings.model_copy(update=judge_updates)
     golden_items = load_golden(golden)[:limit]
     refuse_items = load_unanswerable(unanswerable)[:limit] if unanswerable.exists() else []
     retriever_config = ABLATIONS[config]
+    if k is not None:
+        retriever_config = replace(
+            retriever_config, k=k, candidates=max(retriever_config.candidates, k)
+        )
     try:
         conn = connect(settings)
     except psycopg.OperationalError as exc:
@@ -325,15 +353,24 @@ def eval_answers_cmd(
         reranker = make_reranker(settings) if retriever_config.rerank else None
         retriever = Retriever(conn, make_embedder(settings), reranker)
         try:
-            answerer = pipeline_answerer(
-                retriever, RetryingGenerator(make_generator(settings)), retriever_config
-            )
+            if mode == "agent":
+                answerer = agent_answerer(
+                    lambda: RetryingGenerator(make_tool_generator(settings)),
+                    SearchTool(retriever, retriever_config),
+                    agent_limits(settings),
+                )
+            else:
+                answerer = pipeline_answerer(
+                    retriever, RetryingGenerator(make_generator(settings)), retriever_config
+                )
             report = evaluate_answers(
                 golden_items,
                 refuse_items,
                 answerer,
                 make_generator(judge_settings),
                 on_progress=lambda done, total: typer.echo(f"  {done}/{total}", err=True),
+                price_in=price_in,
+                price_out=price_out,
                 checkpoint=checkpoint,
             )
         except (anthropic.AnthropicError, openai.OpenAIError) as exc:
@@ -347,20 +384,29 @@ def eval_answers_cmd(
         "corpus_ref": ref_file.read_text().strip() if ref_file.exists() else "unknown",
         "fingerprint": settings.pipeline_fingerprint(),
         "retrieval": config,
+        "mode": mode,
+        "k": retriever_config.k,
         "llm": _llm_label(settings),
         "judge": _llm_label(judge_settings),
+        "prices": {"in": price_in, "out": price_out},
     }
+    if mode == "agent":
+        agent_settings = settings.model_copy(
+            update={"llm_backend": settings.agent_backend or settings.llm_backend}
+        )
+        meta["agent_llm"] = _llm_label(agent_settings, settings.agent_model)
+        meta["agent_limits"] = asdict(agent_limits(settings))
     typer.echo(answers_markdown(report))
     path = write_answer_results(out, report, meta)
     typer.secho(f"Saved {path}", fg="green")
 
 
-def _llm_label(settings: Settings) -> str:
+def _llm_label(settings: Settings, model: str | None = None) -> str:
     match settings.llm_backend:
         case "anthropic":
-            return f"anthropic:{settings.llm_model}"
+            return f"anthropic:{model or settings.llm_model}"
         case "openrouter":
-            return f"openrouter:{settings.openrouter_model}"
+            return f"openrouter:{model or settings.openrouter_model}"
     return settings.llm_backend
 
 

@@ -139,6 +139,26 @@ What the bigger set changed:
    The open question from chapter 2 is settled.
 6. **Dense ≫ keyword** at every sample size.
 
+## Running `eval-answers`: flags and the judge
+
+`rag eval-answers` answers every golden question, then grades the answers with a judge model.
+The flags that matter for a comparison:
+
+- `--mode pipeline|agent`: `pipeline` retrieves once and answers; `agent` lets the LLM call the
+  search tool (see [08-agent.md](08-agent.md)). Both write the same metrics, plus calls, tokens,
+  latency and cost.
+- `--k N`: passages per search. In agent mode the model still picks k per call, up to 10; `N`
+  is the ablation's k.
+- `--judge-model ID`: the judge model, with `--judge-backend` choosing the provider.
+- `--price-in` / `--price-out`: USD per million tokens, so cost per question is computed from the
+  token counts (default 0, which reports zero cost).
+- `--resume FILE`: continue an interrupted run from its checkpoint. The file must exist, so a
+  typo cannot start a full, quota-spending run.
+
+Pick a judge from a different model family than the generator. An LLM judge tends to rate its
+own family's wording as correct and faithful, so a same-family judge can hide the errors you
+are trying to measure.
+
 ## Answer-level results (2026-10-11, `rag eval-answers`)
 
 Retrieval: `hybrid+rerank, max 1/page` (the `rag ask` default). Answers:
