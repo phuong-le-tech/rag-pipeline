@@ -10,6 +10,14 @@ import psycopg
 import typer
 from pgvector.psycopg import register_vector
 
+from rag.agent.loop import (
+    AgentResult,
+    ToolCallEvent,
+    ToolResultEvent,
+    agent_limits,
+    run_agent,
+)
+from rag.agent.tools import DEFAULT_K, SearchTool
 from rag.config import Settings
 from rag.db import connect, init_db
 from rag.embed import make_embedder
@@ -30,8 +38,8 @@ from rag.evals.runner import (
     to_markdown,
     write_results,
 )
-from rag.generate.answer import answer_question
-from rag.generate.generator import make_generator
+from rag.generate.answer import Answer, answer_question
+from rag.generate.generator import make_generator, make_tool_generator
 from rag.ingest.chunking import chunk_markdown
 from rag.ingest.loaders import iter_documents
 from rag.ingest.pipeline import ingest
@@ -87,6 +95,62 @@ def ask_config(k: int, rerank: bool, generated: bool, rewrite: bool) -> Retrieve
     )
 
 
+def _print_sources(answer: Answer) -> None:
+    typer.echo("")
+    if answer.invalid_citations:
+        cited = ", ".join(f"[{n}]" for n in answer.invalid_citations)
+        typer.secho(f"Warning: answer cites passages that don't exist: {cited}", fg="yellow")
+    if answer.sources:
+        typer.secho("\nSources", bold=True)
+        for source in answer.sources:
+            hit = source.hit
+            typer.echo(f"[{source.number}] {hit.heading or hit.title}\n    {hit.url}")
+
+
+def _echo_search(event: ToolResultEvent, call: ToolCallEvent) -> None:
+    k = (call.arguments or {}).get("k", DEFAULT_K)
+    head = f'→ {event.name}("{event.query}", k={k})'
+    if event.duplicate:
+        refs = ", ".join(f"[{n}]" for n in event.numbers)
+        note = f"duplicate, see {refs}" if refs else "duplicate, no passages"
+        typer.secho(f"{head}  {note}", fg="yellow")
+        return
+    typer.echo(f"{head}  {event.ms / 1000:.1f} s")
+    for number, hit in list(zip(event.numbers, event.hits, strict=True))[:3]:
+        typer.echo(f"   [{number}] {hit.heading or hit.title} — {hit.url}")
+
+
+def _run_agent_with_trace(
+    question: str, settings: Settings, retriever: Retriever, config: RetrieverConfig
+) -> AgentResult:
+    search = SearchTool(retriever, config)
+    call: ToolCallEvent | None = None
+    result: AgentResult | None = None
+    for event in run_agent(question, make_tool_generator(settings), search, agent_limits(settings)):
+        if isinstance(event, AgentResult):
+            result = event
+        elif isinstance(event, ToolCallEvent):
+            call = event
+            if event.error:
+                typer.secho(f"→ {event.name}  {event.error}", fg="yellow")
+        elif call is not None and not event.error:
+            _echo_search(event, call)
+    if result is None:
+        raise AssertionError("run_agent always ends with an AgentResult")
+    return result
+
+
+def _counters(result: AgentResult) -> str:
+    if result.input_tokens is None and result.output_tokens is None:
+        tokens = "n/a"
+    else:
+        tokens = f"{(result.input_tokens or 0) + (result.output_tokens or 0):,}"
+    return (
+        f"{result.llm_calls} LLM calls · {result.tool_calls} searches · {tokens} tokens · "
+        f"stopped: {result.stopped}"
+    )
+
+
 @app.command("ask")
 def ask_cmd(
     question: Annotated[str, typer.Argument(help="Question about Kubernetes.")],
@@ -96,8 +160,15 @@ def ask_cmd(
     rewrite: Annotated[
         bool, typer.Option(help="LLM rewrites the question for search (one extra LLM call).")
     ] = False,
+    agent: Annotated[
+        bool, typer.Option(help="The LLM decides what to search; prints each step.")
+    ] = False,
 ) -> None:
     """Answer a question from the docs, with [n] citations to the passages used."""
+    if agent and rewrite:
+        raise typer.BadParameter(
+            "--agent cannot be combined with --rewrite: the agent writes its own queries."
+        )
     settings = Settings()
     config = ask_config(k=k, rerank=rerank, generated=generated, rewrite=rewrite)
     try:
@@ -105,35 +176,36 @@ def ask_cmd(
     except psycopg.OperationalError as exc:
         raise _database_unreachable(exc) from exc
 
+    agent_result: AgentResult | None = None
     with conn:
         register_vector(conn)
         reranker = make_reranker(settings) if rerank else None
         rewriter = QueryRewriter(make_generator(settings)) if rewrite else None
         retriever = Retriever(conn, make_embedder(settings), reranker, rewriter)
         try:
-            result = answer_question(
-                question,
-                retriever,
-                make_generator(settings),
-                config,
-                on_text=lambda piece: typer.echo(piece, nl=False),
-            )
+            if agent:
+                agent_result = _run_agent_with_trace(question, settings, retriever, config)
+                answer = agent_result.answer
+            else:
+                answer = answer_question(
+                    question,
+                    retriever,
+                    make_generator(settings),
+                    config,
+                    on_text=lambda piece: typer.echo(piece, nl=False),
+                )
         except (anthropic.AnthropicError, openai.OpenAIError) as exc:
             typer.secho(f"\nLLM call failed ({settings.llm_backend}): {exc}", fg="red", err=True)
             typer.echo(llm_error_hint(exc, settings), err=True)
             raise typer.Exit(1) from exc
 
-    if result.refused and not result.retrieved:
-        typer.echo(result.text)
-    typer.echo("")
-    if result.invalid_citations:
-        cited = ", ".join(f"[{n}]" for n in result.invalid_citations)
-        typer.secho(f"Warning: answer cites passages that don't exist: {cited}", fg="yellow")
-    if result.sources:
-        typer.secho("\nSources", bold=True)
-        for source in result.sources:
-            hit = source.hit
-            typer.echo(f"[{source.number}] {hit.heading or hit.title}\n    {hit.url}")
+    if agent_result is not None:
+        typer.echo(f"\n{answer.text}")  # the agent does not stream, so the text comes here
+    elif answer.refused and not answer.retrieved:
+        typer.echo(answer.text)
+    _print_sources(answer)
+    if agent_result is not None:
+        typer.echo(_counters(agent_result))
 
 
 @app.command("eval")

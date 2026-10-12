@@ -157,6 +157,36 @@ def test_ask_command_prints_answer_and_cited_sources(tmp_path, monkeypatch, test
     assert "https://kubernetes.io/docs/tasks/rollback/" in result.output
 
 
+@pytest.mark.integration
+def test_ask_agent_prints_steps_answer_and_counters(tmp_path, monkeypatch, test_database_url):
+    (tmp_path / "tasks").mkdir()
+    (tmp_path / "tasks" / "rollback.md").write_text(
+        "---\ntitle: Rollback\n---\nUse kubectl rollout undo to revert a Deployment.\n"
+    )
+    monkeypatch.setenv("RAG_DATABASE_URL", test_database_url)
+    monkeypatch.setenv("RAG_EMBEDDING_BACKEND", "fake")
+    monkeypatch.setenv("RAG_EMBEDDING_DIM", "8")
+    monkeypatch.setenv("RAG_LLM_BACKEND", "fake")
+    with psycopg.connect(test_database_url) as conn:
+        conn.execute("TRUNCATE documents RESTART IDENTITY CASCADE")
+    runner.invoke(cli.app, ["ingest", str(tmp_path)])
+
+    result = runner.invoke(cli.app, ["ask", "how do I revert?", "--agent", "--no-rerank"])
+
+    assert result.exit_code == 0, result.output
+    assert 'search_docs("rollback", k=5)' in result.output
+    assert "fake agent answer" in result.output
+    assert "[1] Rollback" in result.output
+    assert "stopped: answered" in result.output
+
+
+def test_ask_agent_rejects_rewrite():
+    result = runner.invoke(cli.app, ["ask", "q", "--agent", "--rewrite"])
+
+    assert result.exit_code == 2
+    assert "cannot be combined with --rewrite" in result.output
+
+
 def _openai_error(cls, status):
     request = httpx.Request("POST", "https://openrouter.ai/api/v1/chat/completions")
     return cls("boom", response=httpx.Response(status, request=request), body=None)

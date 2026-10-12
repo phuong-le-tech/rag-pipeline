@@ -121,6 +121,7 @@ uv run rag ask "How do I roll back a deployment?"
 | `rag ingest CORPUS_ROOT [--no-prune]` | Incremental load → chunk → embed → store |
 | `rag search QUERY [--mode dense\|keyword\|hybrid] [--rerank] [-k N] [--no-generated]` | Ranked passages, no LLM |
 | `rag ask QUESTION [-k N] [--rewrite] [--no-rerank]` | Cited answer, streamed |
+| `rag ask QUESTION --agent [-k N] [--no-rerank]` | Agent mode: the LLM decides what to search, each step printed; answer not streamed |
 | `rag eval [--config NAME] [--limit N]` | Retrieval metrics per configuration, split by question origin |
 | `rag eval-answers [--config NAME] [--judge-backend B]` | Faithfulness, correctness, citations, refusals (LLM judge) |
 | `rag draft-questions --n N --seed S` | LLM-drafted golden questions (resumable) |
@@ -169,6 +170,11 @@ Environment variables (or `.env` locally). Settings use the `RAG_` prefix; API k
 | `RAG_OPENROUTER_MODEL` | `nvidia/nemotron-3-super-120b-a12b:free` | |
 | `RAG_LLM_MODEL` | `claude-sonnet-5-5` | Anthropic backend only |
 | `RAG_LLM_TIMEOUT_S` | `60` | per LLM request |
+| `RAG_AGENT_BACKEND` | unset (= `RAG_LLM_BACKEND`) | `--agent` only: `anthropic`, `openrouter`, `fake` |
+| `RAG_AGENT_MODEL` | unset (= the backend's model) | `--agent` only |
+| `RAG_AGENT_MAX_STEPS` | `4` | `--agent` only: searches per question (1–10) |
+| `RAG_AGENT_TIMEOUT_S` | `90` | `--agent` only: checked between model turns |
+| `RAG_AGENT_MAX_TOTAL_TOKENS` | `30000` | `--agent` only: input + output tokens per question |
 | `RAG_EMBEDDING_BACKEND` | `local` | `openai` (needs `OPENAI_API_KEY`, dim 1536), `fake` |
 | `RAG_EMBEDDING_DIM` | `384` | must match the embedding model |
 | `RAG_EMBEDDING_THREADS` | unset | ONNX threads for embedder and reranker; 4–6 recommended |
