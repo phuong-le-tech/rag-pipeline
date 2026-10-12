@@ -9,6 +9,9 @@ from rag.generate.generator import (
     ClaudeGenerator,
     FakeGenerator,
     OpenAICompatibleGenerator,
+    ScriptedToolGenerator,
+    ToolCall,
+    Turn,
     make_generator,
 )
 from rag.generate.prompt import build_prompt
@@ -286,3 +289,16 @@ def test_stream_answer_without_hits_refuses_without_llm():
     gen = FakeGenerator()
     items = list(stream_answer("q", (), gen))
     assert len(items) == 1 and items[0].refused and gen.calls == []
+
+
+# --- scripted tool generator --------------------------------------------------------------
+
+
+def test_scripted_tool_generator_replays_turns_then_refuses():
+    gen = ScriptedToolGenerator(
+        [Turn("", (ToolCall("c1", "search_docs", '{"query": "x"}'),)), Turn("Done [1].")]
+    )
+    assert gen.chat("s", [{"role": "user", "content": "q"}], []).tool_calls[0].name == "search_docs"
+    assert gen.chat("s", [], []).text == "Done [1]."
+    assert gen.chat("s", [], []).text == REFUSAL
+    assert len(gen.calls) == 3

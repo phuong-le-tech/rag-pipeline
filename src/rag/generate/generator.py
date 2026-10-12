@@ -1,11 +1,35 @@
 """LLM wrappers behind one small protocol. Kept deliberately thin: no framework."""
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
+from dataclasses import dataclass
 from typing import Any, Protocol
 
 from rag.config import Settings
+from rag.generate.prompt import REFUSAL
 
 FAKE_ANSWER = "This is a fake answer that cites the first passage [1]."
+
+
+@dataclass(frozen=True)
+class ToolCall:
+    id: str
+    name: str
+    arguments: str  # raw JSON text; the loop parses it so bad JSON becomes a tool error
+
+
+@dataclass(frozen=True)
+class Turn:
+    text: str
+    tool_calls: tuple[ToolCall, ...] = ()
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+
+
+# Transcript entries (plain dicts, provider-neutral):
+#   {"role": "user", "content": str}
+#   {"role": "assistant", "text": str, "tool_calls": list[ToolCall]}
+#   {"role": "tool", "id": str, "content": str}
+Message = dict[str, Any]
 
 
 class Generator(Protocol):
@@ -123,6 +147,30 @@ class OpenAICompatibleGenerator:
         for chunk in chunks:
             if chunk.choices and chunk.choices[0].delta.content:
                 yield chunk.choices[0].delta.content
+
+
+class ToolGenerator(Protocol):
+    """Tool-calling chat. Tool specs are neutral ``{"name", "description", "input_schema"}``."""
+
+    def chat(
+        self, system: str, messages: list[Message], tools: list[dict], allow_tools: bool = True
+    ) -> Turn: ...
+
+
+class ScriptedToolGenerator:
+    """Replays scripted turns in order, then refuses. For tests and offline runs."""
+
+    def __init__(self, turns: Sequence[Turn]) -> None:
+        self._turns = list(turns)
+        self.calls: list[tuple[str, list[Message], bool]] = []
+
+    def chat(
+        self, system: str, messages: list[Message], tools: list[dict], allow_tools: bool = True
+    ) -> Turn:
+        self.calls.append((system, list(messages), allow_tools))
+        if not self._turns:
+            return Turn(REFUSAL)
+        return self._turns.pop(0)
 
 
 def _secret(value: Any) -> str | None:
