@@ -385,7 +385,8 @@ def eval_answers_cmd(
         "fingerprint": settings.pipeline_fingerprint(),
         "retrieval": config,
         "mode": mode,
-        "k": retriever_config.k,
+        # In agent mode the model picks k per search, so the --k value is not recorded.
+        "k": None if mode == "agent" else retriever_config.k,
         "llm": _llm_label(settings),
         "judge": _llm_label(judge_settings),
         "prices": {"in": price_in, "out": price_out},
@@ -396,6 +397,7 @@ def eval_answers_cmd(
         )
         meta["agent_llm"] = _llm_label(agent_settings, settings.agent_model)
         meta["agent_limits"] = asdict(agent_limits(settings))
+        meta["agent_k"] = "model-chosen per call (default 5, max 10)"
     typer.echo(answers_markdown(report))
     path = write_answer_results(out, report, meta)
     typer.secho(f"Saved {path}", fg="green")

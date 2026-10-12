@@ -147,8 +147,8 @@ The flags that matter for a comparison:
 - `--mode pipeline|agent`: `pipeline` retrieves once and answers; `agent` lets the LLM call the
   search tool (see [08-agent.md](08-agent.md)). Both write the same metrics, plus calls, tokens,
   latency and cost.
-- `--k N`: passages per search. In agent mode the model still picks k per call, up to 10; `N`
-  is the ablation's k.
+- `--k N`: passages per search in pipeline mode only (default: the ablation's k). In agent mode
+  the model picks k per search (default 5, max 10), so `--k` does not apply there.
 - `--judge-model ID`: the judge model, with `--judge-backend` choosing the provider.
 - `--price-in` / `--price-out`: USD per million tokens, so cost per question is computed from the
   token counts (default 0, which reports zero cost).

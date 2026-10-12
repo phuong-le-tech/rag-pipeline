@@ -569,17 +569,28 @@ def test_eval_answers_agent_mode_builds_agent_answerer_with_retrying_llm(answers
     assert result.exit_code == 0, result.output
     make_llm, search, limits = seen["agent"]
     assert isinstance(make_llm(), cli.RetryingGenerator)
-    assert search.config.k == 3
     assert limits == cli.agent_limits(Settings())
     assert seen["evaluate"]["answerer"] is not None
     assert seen["meta"]["mode"] == "agent"
-    assert seen["meta"]["k"] == 3
+    assert seen["meta"]["k"] is None
+    assert seen["meta"]["agent_k"] == "model-chosen per call (default 5, max 10)"
     assert seen["meta"]["agent_llm"] == "fake"
     assert seen["meta"]["agent_limits"] == {
         "max_steps": 4,
         "timeout_s": 90.0,
         "max_total_tokens": 30000,
     }
+
+
+def test_eval_answers_k_sets_the_pipeline_config_k(answers_run):
+    invoke, seen = answers_run
+
+    result = invoke("--k", "3")
+
+    assert result.exit_code == 0, result.output
+    assert seen["meta"]["mode"] == "pipeline"
+    assert seen["meta"]["k"] == 3
+    assert "agent_k" not in seen["meta"]
 
 
 def test_eval_answers_pipeline_mode_is_the_default_and_has_no_agent_meta(answers_run):
@@ -602,6 +613,7 @@ def test_eval_answers_judge_model_replaces_the_judge_model_and_labels_it(answers
 
     assert result.exit_code == 0, result.output
     assert seen["meta"]["judge"] == "openrouter:judge/x"
+    assert seen["evaluate"]["judge"].model == "judge/x"
     assert seen["meta"]["llm"] == "fake"
 
 
