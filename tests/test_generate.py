@@ -12,6 +12,8 @@ from rag.generate.generator import (
     ScriptedToolGenerator,
     ToolCall,
     Turn,
+    _anthropic_messages,
+    _openai_messages,
     make_generator,
 )
 from rag.generate.prompt import build_prompt
@@ -302,3 +304,241 @@ def test_scripted_tool_generator_replays_turns_then_refuses():
     assert gen.chat("s", [], []).text == "Done [1]."
     assert gen.chat("s", [], []).text == REFUSAL
     assert len(gen.calls) == 3
+
+
+# --- tool calling: chat() on the real backends ---------------------------------------------
+
+SEARCH_SPEC = {
+    "name": "search_docs",
+    "description": "Search the Kubernetes docs.",
+    "input_schema": {
+        "type": "object",
+        "properties": {"query": {"type": "string"}},
+        "required": ["query"],
+    },
+}
+
+
+class StubToolMessages:
+    def __init__(self, response):
+        self.response = response
+        self.requests = []
+
+    def create(self, **request):
+        self.requests.append(request)
+        return self.response
+
+
+def test_claude_chat_maps_tool_use_both_ways():
+    response = SimpleNamespace(
+        content=[
+            SimpleNamespace(type="text", text="Let me search."),
+            SimpleNamespace(type="tool_use", id="t1", name="search_docs", input={"query": "pdb"}),
+        ],
+        usage=SimpleNamespace(input_tokens=120, output_tokens=15),
+    )
+    messages = StubToolMessages(response)
+    gen = ClaudeGenerator("m", 100, client=SimpleNamespace(messages=messages))
+    history = [
+        {"role": "user", "content": "q"},
+        {
+            "role": "assistant",
+            "text": "",
+            "tool_calls": [ToolCall("t0", "search_docs", '{"query": "a"}')],
+        },
+        {"role": "tool", "id": "t0", "content": "[1] ..."},
+    ]
+
+    turn = gen.chat("sys", history, [SEARCH_SPEC], allow_tools=False)
+
+    sent = messages.requests[0]
+    assert sent["model"] == "m"
+    assert sent["max_tokens"] == 100
+    assert sent["system"] == "sys"
+    assert sent["tools"] == [
+        {
+            "name": "search_docs",
+            "description": "Search the Kubernetes docs.",
+            "input_schema": SEARCH_SPEC["input_schema"],
+        }
+    ]
+    assert sent["tool_choice"] == {"type": "none"}
+    assert sent["messages"] == [
+        {"role": "user", "content": "q"},
+        {
+            "role": "assistant",
+            "content": [
+                {"type": "tool_use", "id": "t0", "name": "search_docs", "input": {"query": "a"}}
+            ],
+        },
+        {
+            "role": "user",
+            "content": [{"type": "tool_result", "tool_use_id": "t0", "content": "[1] ..."}],
+        },
+    ]
+    assert turn == Turn(
+        "Let me search.", (ToolCall("t1", "search_docs", '{"query": "pdb"}'),), 120, 15
+    )
+
+
+def test_claude_chat_allow_tools_omits_tool_choice_and_no_tools_omits_both():
+    messages = StubToolMessages(SimpleNamespace(content=[], usage=None))
+    gen = ClaudeGenerator("m", 100, client=SimpleNamespace(messages=messages))
+
+    turn = gen.chat("s", [{"role": "user", "content": "q"}], [SEARCH_SPEC], allow_tools=True)
+    gen.chat("s", [{"role": "user", "content": "q"}], [], allow_tools=False)
+
+    assert "tool_choice" not in messages.requests[0]
+    assert messages.requests[0]["tools"][0]["name"] == "search_docs"
+    assert "tools" not in messages.requests[1]
+    assert "tool_choice" not in messages.requests[1]
+    assert turn == Turn("", (), None, None)
+
+
+def test_claude_chat_merges_tool_results_and_nudge_into_one_user_message():
+    messages = StubToolMessages(SimpleNamespace(content=[], usage=None))
+    gen = ClaudeGenerator("m", 100, client=SimpleNamespace(messages=messages))
+    history = [
+        {"role": "user", "content": "q"},
+        {
+            "role": "assistant",
+            "text": "Checking two things.",
+            "tool_calls": [
+                ToolCall("a", "search_docs", '{"query": "x"}'),
+                ToolCall("b", "search_docs", '{"query": "y"}'),
+            ],
+        },
+        {"role": "tool", "id": "a", "content": "A"},
+        {"role": "tool", "id": "b", "content": "B"},
+        {"role": "user", "content": "Answer now."},
+    ]
+
+    gen.chat("s", history, [SEARCH_SPEC])
+
+    sent = messages.requests[0]["messages"]
+    assert sent[1] == {
+        "role": "assistant",
+        "content": [
+            {"type": "text", "text": "Checking two things."},
+            {"type": "tool_use", "id": "a", "name": "search_docs", "input": {"query": "x"}},
+            {"type": "tool_use", "id": "b", "name": "search_docs", "input": {"query": "y"}},
+        ],
+    }
+    assert sent[2] == {
+        "role": "user",
+        "content": [
+            {"type": "tool_result", "tool_use_id": "a", "content": "A"},
+            {"type": "tool_result", "tool_use_id": "b", "content": "B"},
+            {"type": "text", "text": "Answer now."},
+        ],
+    }
+    assert len(sent) == 3
+
+
+def test_anthropic_messages_tolerates_invalid_argument_json_in_history():
+    history = [
+        {"role": "assistant", "text": "", "tool_calls": [ToolCall("a", "search_docs", "{oops")]},
+    ]
+
+    assert _anthropic_messages(history) == [
+        {
+            "role": "assistant",
+            "content": [{"type": "tool_use", "id": "a", "name": "search_docs", "input": {}}],
+        }
+    ]
+
+
+class StubOpenAIToolCompletions:
+    def __init__(self, response):
+        self.response = response
+        self.requests = []
+
+    def create(self, **request):
+        self.requests.append(request)
+        return self.response
+
+
+def test_openai_chat_round_trip_with_tool_choice_none():
+    tool_call = SimpleNamespace(
+        id="t1",
+        type="function",
+        function=SimpleNamespace(name="search_docs", arguments='{"query": "pdb"}'),
+    )
+    response = SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                message=SimpleNamespace(content="Let me search.", tool_calls=[tool_call])
+            )
+        ],
+        usage=SimpleNamespace(prompt_tokens=120, completion_tokens=15),
+    )
+    completions = StubOpenAIToolCompletions(response)
+    gen = OpenAICompatibleGenerator("m", 128, client=openai_client(completions))
+    history = [
+        {"role": "user", "content": "q"},
+        {
+            "role": "assistant",
+            "text": "Searching.",
+            "tool_calls": [ToolCall("t0", "search_docs", '{"query": "a"}')],
+        },
+        {"role": "tool", "id": "t0", "content": "[1] ..."},
+    ]
+
+    turn = gen.chat("sys", history, [SEARCH_SPEC], allow_tools=False)
+
+    sent = completions.requests[0]
+    assert sent["model"] == "m"
+    assert sent["max_tokens"] == 128
+    assert sent["tool_choice"] == "none"
+    assert sent["tools"] == [
+        {
+            "type": "function",
+            "function": {
+                "name": "search_docs",
+                "description": "Search the Kubernetes docs.",
+                "parameters": SEARCH_SPEC["input_schema"],
+            },
+        }
+    ]
+    assert sent["messages"] == [
+        {"role": "system", "content": "sys"},
+        {"role": "user", "content": "q"},
+        {
+            "role": "assistant",
+            "content": "Searching.",
+            "tool_calls": [
+                {
+                    "id": "t0",
+                    "type": "function",
+                    "function": {"name": "search_docs", "arguments": '{"query": "a"}'},
+                }
+            ],
+        },
+        {"role": "tool", "tool_call_id": "t0", "content": "[1] ..."},
+    ]
+    assert turn == Turn(
+        "Let me search.", (ToolCall("t1", "search_docs", '{"query": "pdb"}'),), 120, 15
+    )
+
+
+def test_openai_chat_allow_tools_sends_tools_without_tool_choice():
+    response = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content=None, tool_calls=None))],
+        usage=None,
+    )
+    completions = StubOpenAIToolCompletions(response)
+    gen = OpenAICompatibleGenerator("m", 128, client=openai_client(completions))
+
+    turn = gen.chat("s", [{"role": "user", "content": "q"}], [SEARCH_SPEC], allow_tools=True)
+
+    assert "tool_choice" not in completions.requests[0]
+    assert "tools" in completions.requests[0]
+    assert turn == Turn("", (), None, None)
+
+
+def test_openai_messages_empty_assistant_text_becomes_null_content():
+    history = [
+        {"role": "assistant", "text": "", "tool_calls": [ToolCall("a", "search_docs", "{}")]}
+    ]
+
+    assert _openai_messages("S", history)[1]["content"] is None

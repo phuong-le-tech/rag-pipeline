@@ -1,5 +1,6 @@
 """LLM wrappers behind one small protocol. Kept deliberately thin: no framework."""
 
+import json
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -95,6 +96,34 @@ class ClaudeGenerator:
         with self.client.messages.stream(**self._request(system, user)) as stream:
             yield from stream.text_stream
 
+    def chat(
+        self, system: str, messages: list[Message], tools: list[dict], allow_tools: bool = True
+    ) -> Turn:
+        request: dict[str, Any] = {
+            "model": self.model,
+            "max_tokens": self.max_tokens,
+            "system": system,
+            "messages": _anthropic_messages(messages),
+        }
+        if tools:
+            request["tools"] = _anthropic_tools(tools)
+            if not allow_tools:
+                request["tool_choice"] = {"type": "none"}
+        response = self.client.messages.create(**request)
+        text = "".join(block.text for block in response.content if block.type == "text")
+        calls = tuple(
+            ToolCall(block.id, block.name, json.dumps(block.input))
+            for block in response.content
+            if block.type == "tool_use"
+        )
+        usage = response.usage
+        return Turn(
+            text,
+            calls,
+            usage.input_tokens if usage else None,
+            usage.output_tokens if usage else None,
+        )
+
 
 class OpenAICompatibleGenerator:
     """Any OpenAI-style Chat Completions endpoint: OpenRouter, Groq, Gemini, Ollama, vLLM...
@@ -148,6 +177,32 @@ class OpenAICompatibleGenerator:
             if chunk.choices and chunk.choices[0].delta.content:
                 yield chunk.choices[0].delta.content
 
+    def chat(
+        self, system: str, messages: list[Message], tools: list[dict], allow_tools: bool = True
+    ) -> Turn:
+        request: dict[str, Any] = {
+            "model": self.model,
+            "max_tokens": self.max_tokens,
+            "messages": _openai_messages(system, messages),
+        }
+        if tools:
+            request["tools"] = _openai_tools(tools)
+            if not allow_tools:
+                request["tool_choice"] = "none"
+        response = self.client.chat.completions.create(**request)
+        message = response.choices[0].message
+        calls = tuple(
+            ToolCall(call.id, call.function.name, call.function.arguments)
+            for call in message.tool_calls or []
+        )
+        usage = response.usage
+        return Turn(
+            message.content or "",
+            calls,
+            usage.prompt_tokens if usage else None,
+            usage.completion_tokens if usage else None,
+        )
+
 
 class ToolGenerator(Protocol):
     """Tool-calling chat. Tool specs are neutral ``{"name", "description", "input_schema"}``."""
@@ -171,6 +226,86 @@ class ScriptedToolGenerator:
         if not self._turns:
             return Turn(REFUSAL)
         return self._turns.pop(0)
+
+
+def _anthropic_tools(tools: list[dict]) -> list[dict]:
+    return [
+        {"name": t["name"], "description": t["description"], "input_schema": t["input_schema"]}
+        for t in tools
+    ]
+
+
+def _openai_tools(tools: list[dict]) -> list[dict]:
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": t["name"],
+                "description": t["description"],
+                "parameters": t["input_schema"],
+            },
+        }
+        for t in tools
+    ]
+
+
+def _anthropic_messages(messages: list[Message]) -> list[dict]:
+    out: list[dict] = []
+    for m in messages:
+        if m["role"] == "assistant":
+            blocks: list[dict] = [{"type": "text", "text": m["text"]}] if m["text"] else []
+            for call in m["tool_calls"]:
+                blocks.append(
+                    {
+                        "type": "tool_use",
+                        "id": call.id,
+                        "name": call.name,
+                        "input": _parse_arguments(call.arguments),
+                    }
+                )
+            out.append({"role": "assistant", "content": blocks})
+            continue
+        # Tool results and nudges share one user message so roles keep alternating.
+        if m["role"] == "tool":
+            block = {"type": "tool_result", "tool_use_id": m["id"], "content": m["content"]}
+        else:
+            block = {"type": "text", "text": m["content"]}
+        if out and out[-1]["role"] == "user" and isinstance(out[-1]["content"], list):
+            out[-1]["content"].append(block)
+        elif m["role"] == "tool":
+            out.append({"role": "user", "content": [block]})
+        else:
+            out.append({"role": "user", "content": m["content"]})
+    return out
+
+
+def _openai_messages(system: str, messages: list[Message]) -> list[dict]:
+    out: list[dict] = [{"role": "system", "content": system}]
+    for m in messages:
+        if m["role"] == "assistant":
+            entry: dict[str, Any] = {"role": "assistant", "content": m["text"] or None}
+            entry["tool_calls"] = [
+                {
+                    "id": call.id,
+                    "type": "function",
+                    "function": {"name": call.name, "arguments": call.arguments},
+                }
+                for call in m["tool_calls"]
+            ]
+            out.append(entry)
+        elif m["role"] == "tool":
+            out.append({"role": "tool", "tool_call_id": m["id"], "content": m["content"]})
+        else:
+            out.append({"role": "user", "content": m["content"]})
+    return out
+
+
+def _parse_arguments(arguments: str) -> Any:
+    # History is ours, but a model can emit bad JSON; the loop reports that as a tool error.
+    try:
+        return json.loads(arguments)
+    except ValueError:
+        return {}
 
 
 def _secret(value: Any) -> str | None:
