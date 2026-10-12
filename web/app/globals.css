@@ -376,3 +376,13 @@ button.cite{cursor:pointer}
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
 }
+
+/* ---------- legal pages + notices ---------- */
+.fine{font-size:var(--fs-xs);color:var(--tx3)}
+.credits{gap:var(--sp3)}
+.legal{max-width:720px;margin:0 auto;padding:48px 16px 64px;line-height:1.65;font-size:var(--fs-l)}
+.legal h1{font-family:var(--display);font-size:32px;line-height:1.1;letter-spacing:-.03em;margin:24px 0 16px}
+.legal h2{font-size:var(--fs-l);font-weight:600;margin:28px 0 8px}
+.legal ul{list-style:disc;padding-left:20px}
+.legal p,.legal li{color:var(--tx2)}
+.legal strong{color:var(--tx)}

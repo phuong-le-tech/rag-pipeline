@@ -350,6 +350,7 @@ export function AskPanel({ S, A, h, chatRef, inputRef }: P & { chatRef: React.Re
             <span>{S.busy ? "Answering…" : "Ask"}</span><kbd aria-hidden="true">⏎</kbd>
           </button>
         </div>
+        <p className="fine">Questions go to a third-party AI model: don&apos;t include personal data. <a href="/privacy">Privacy</a></p>
       </form>
     </section>
   );
@@ -369,6 +370,11 @@ export function RunStats({ S }: { S: Store }) {
       <F l="Tokens out" v={s ? String(s.tout) : "—"} />
       <F l="Model" v={S.info?.llm_model || "—"} />
       <F l="Embedding" v={S.info ? `${S.info.embedding_model} · 384-dim` : "—"} c="right" />
+      <div className="fs od-row credits">
+        <span>Docs © <a href="https://github.com/kubernetes/website">The Kubernetes Authors</a> · <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a></span>
+        <a href="/legal">Legal</a>
+        <a href="/privacy">Privacy</a>
+      </div>
     </footer>
   );
 }
