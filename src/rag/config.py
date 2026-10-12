@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     anthropic_api_key: SecretStr | None = Field(default=None, alias="ANTHROPIC_API_KEY")
     openrouter_api_key: SecretStr | None = Field(default=None, alias="OPENROUTER_API_KEY")
 
+    # API (glass-box UI backend)
+    cors_origins: str = "http://localhost:3000"  # comma-separated
+    rate_limit_per_minute: int = Field(default=10, gt=0)
+    daily_llm_limit: int = Field(default=300, ge=0)
+    max_concurrent_asks: int = Field(default=2, gt=0)
+
     def embedding_model_name(self) -> str:
         return {
             "local": self.local_embedding_model,
