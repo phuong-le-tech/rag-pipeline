@@ -25,6 +25,7 @@ from rag.evals.answers import (
     RetryingGenerator,
     answers_markdown,
     evaluate_answers,
+    pipeline_answerer,
     write_answer_results,
 )
 from rag.evals.drafting import draft_items, sample_chunks
@@ -317,13 +318,14 @@ def eval_answers_cmd(
         reranker = make_reranker(settings) if retriever_config.rerank else None
         retriever = Retriever(conn, make_embedder(settings), reranker)
         try:
+            answerer = pipeline_answerer(
+                retriever, RetryingGenerator(make_generator(settings)), retriever_config
+            )
             report = evaluate_answers(
                 golden_items,
                 refuse_items,
-                retriever,
-                make_generator(settings),
+                answerer,
                 make_generator(judge_settings),
-                retriever_config,
                 on_progress=lambda done, total: typer.echo(f"  {done}/{total}", err=True),
             )
         except (anthropic.AnthropicError, openai.OpenAIError) as exc:

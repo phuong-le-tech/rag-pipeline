@@ -2,9 +2,22 @@ import json
 
 import pytest
 
-from rag.evals.answers import RetryingGenerator, answers_markdown, evaluate_answers
+from rag.agent.loop import Limits
+from rag.agent.tools import SearchResult
+from rag.evals.answers import (
+    Answered,
+    AnswerResult,
+    RetryingGenerator,
+    _summary,
+    agent_answerer,
+    answers_markdown,
+    evaluate_answers,
+    pipeline_answerer,
+)
 from rag.evals.golden import GoldenItem
 from rag.evals.judge import UnanswerableItem
+from rag.generate.answer import Answer
+from rag.generate.generator import ScriptedToolGenerator, ToolCall, Turn, Usage
 from rag.generate.prompt import REFUSAL
 from rag.retrieval.retriever import RetrieverConfig
 from rag.retrieval.search import Hit
@@ -85,7 +98,11 @@ def run():
         }
     )
     report = evaluate_answers(
-        GOLDEN, UNANSWERABLE, retriever, generator, judge, RetrieverConfig(), sleep=lambda _s: None
+        GOLDEN,
+        UNANSWERABLE,
+        pipeline_answerer(retriever, generator, RetrieverConfig()),
+        judge,
+        sleep=lambda _s: None,
     )
     return report, judge
 
@@ -137,7 +154,11 @@ def test_judge_is_asked_again_when_its_output_has_no_usable_json():
     judge = SequenceJudge([malformed, valid])
 
     report = evaluate_answers(
-        GOLDEN[:1], [], retriever, generator, judge, RetrieverConfig(), sleep=lambda _s: None
+        GOLDEN[:1],
+        [],
+        pipeline_answerer(retriever, generator, RetrieverConfig()),
+        judge,
+        sleep=lambda _s: None,
     )
 
     assert judge.calls == 2
@@ -151,7 +172,11 @@ def test_judge_garbage_counts_as_failure_not_crash():
     judge = StubJudge({"roll back?": "I refuse to output JSON"})
 
     report = evaluate_answers(
-        GOLDEN[:1], [], retriever, generator, judge, RetrieverConfig(), sleep=lambda _s: None
+        GOLDEN[:1],
+        [],
+        pipeline_answerer(retriever, generator, RetrieverConfig()),
+        judge,
+        sleep=lambda _s: None,
     )
 
     assert report.summary["judge_failures"] == 1
@@ -202,3 +227,190 @@ def test_usage_of_unwraps_retrying_generator():
     gen = ClaudeGenerator(model="m", max_tokens=8, client=object())
 
     assert usage_of(RetryingGenerator(gen)) is gen.usage
+
+
+class FlakyToolGenerator:
+    def __init__(self, exc):
+        self.exc = exc
+        self.calls = 0
+
+    def chat(self, system, messages, tools, allow_tools=True):
+        self.calls += 1
+        if self.calls == 1:
+            raise self.exc
+        return Turn("ok")
+
+
+def test_retrying_generator_chat_retries_rate_limits():
+    import httpx
+    import openai
+
+    request = httpx.Request("POST", "https://x")
+    exc = openai.RateLimitError("429", response=httpx.Response(429, request=request), body=None)
+    inner = FlakyToolGenerator(exc)
+    sleeps = []
+
+    turn = RetryingGenerator(inner, sleep=sleeps.append).chat("s", [], [])
+
+    assert turn.text == "ok"
+    assert inner.calls == 2
+    assert len(sleeps) == 1
+
+
+def search_stub(query, k):
+    return SearchResult((hit(1), hit(2)), (), 1.0)
+
+
+class RecordingJudge:
+    def __init__(self, output):
+        self.output = output
+        self.prompts = []
+
+    def generate(self, system, user):
+        self.prompts.append(user)
+        return self.output
+
+
+def test_agent_answerer_records_calls_and_judges_every_passage_seen():
+    made = []
+
+    def make_llm():
+        made.append(1)
+        return ScriptedToolGenerator(
+            [
+                Turn("", (ToolCall("c1", "search_docs", '{"query": "rollback"}'),)),
+                Turn("Use rollout undo [1]. Check status [2]."),
+            ]
+        )
+
+    judge = RecordingJudge(
+        json.dumps({"claims": [{"text": "a", "supported": True}] * 2, "correct": "yes"})
+    )
+    answerer = agent_answerer(make_llm, search_stub, Limits())
+
+    report = evaluate_answers(GOLDEN[:1], UNANSWERABLE[:1], answerer, judge, sleep=lambda _s: None)
+
+    assert len(made) == 2  # a fresh tool generator per question
+    r = report.results[0]
+    assert (r.tool_calls, r.llm_calls, r.stopped) == (1, 2, "answered")
+    assert r.faithfulness == 1.0
+    assert "passage 1" in judge.prompts[0] and "passage 2" in judge.prompts[0]
+    assert report.results[1].stopped == "answered"
+
+
+def result(**overrides):
+    base = dict(
+        id="x",
+        kind="answerable",
+        question="q",
+        refused=True,  # refused rows need no citation stats, so the helper stays minimal
+        answer="a",
+        faithfulness=None,
+        n_claims=0,
+        unsupported=(),
+        correct=None,
+        citations={},
+        latency_ms=1.0,
+    )
+    return AnswerResult(**(base | overrides))
+
+
+def test_p95_is_nearest_rank_over_latencies():
+    results = [result(latency_ms=float(i)) for i in range(1, 21)]
+
+    assert _summary(results, judged_expected=False)["latency_p95_ms"] == 19.0
+
+
+def answered(answer, llm_calls=1, tool_calls=0, tokens=(None, None), stopped="pipeline"):
+    return Answered(answer, llm_calls, tool_calls, tokens[0], tokens[1], stopped)
+
+
+ANSWER = Answer("Use it [1].", (), (), False, (hit(1),))
+REFUSED = Answer(REFUSAL, (), (), True, ())
+
+
+def test_cost_and_tokens_average_over_questions_that_reported_them():
+    def fake(question):
+        if question == "roll back?":
+            return answered(ANSWER, tokens=(1000, 500))
+        return answered(ANSWER)
+
+    report = evaluate_answers(
+        GOLDEN[:1],
+        UNANSWERABLE[:1],
+        fake,
+        None,
+        sleep=lambda _s: None,
+        price_in=1.0,
+        price_out=2.0,
+    )
+
+    s = report.summary
+    assert s["tokens_mean"] == 1500.0
+    assert s["cost_usd_per_question"] == pytest.approx(0.002)
+    assert s["llm_calls_mean"] == 1.0
+    assert s["tool_calls_mean"] == 0.0
+
+
+def test_by_origin_splits_summary_and_markdown_by_question_origin():
+    golden = [
+        GoldenItem("g1", "roll back?", ("s1.md",), None, (), "human"),
+        GoldenItem("g2", "llm q?", ("s2.md",), None, (), "llm"),
+    ]
+    unanswerable = [UnanswerableItem("u1", "bake?", "llm")]
+    answers = {"roll back?": ANSWER, "llm q?": REFUSED}
+
+    report = evaluate_answers(
+        golden,
+        unanswerable,
+        lambda q: answered(answers.get(q, REFUSED)),
+        None,
+        sleep=lambda _s: None,
+    )
+
+    assert list(report.by_origin) == ["human", "llm"]
+    assert report.by_origin["human"]["answer_rate"] == 1.0
+    assert report.by_origin["llm"]["answer_rate"] == 0.0
+    assert report.by_origin["llm"]["answerable_n"] == 1
+    assert report.by_origin["llm"]["unanswerable_n"] == 1
+    assert report.by_origin["human"]["unanswerable_n"] == 0
+    table = answers_markdown(report)
+    assert "By origin" in table and "| Metric | human | llm |" in table
+    assert "p95" in table
+
+
+class CountingGenerator:
+    def __init__(self):
+        self.usage = Usage()
+
+    def generate(self, system, user):
+        self.usage.add(100, 50)
+        return "Use it [1]."
+
+    def stream(self, system, user):
+        yield self.generate(system, user)
+
+
+def test_pipeline_answerer_reports_per_question_token_delta_and_llm_calls():
+    retriever = StubRetriever({"roll back?": [hit(1)], "drain?": []})
+    answerer = pipeline_answerer(retriever, CountingGenerator(), RetrieverConfig())
+
+    first = answerer("roll back?")
+    second = answerer("roll back?")
+    refused = answerer("drain?")
+
+    assert (first.input_tokens, first.output_tokens) == (100, 50)
+    assert (second.input_tokens, second.output_tokens) == (100, 50)
+    assert (first.llm_calls, first.tool_calls, first.stopped) == (1, 0, "pipeline")
+    assert refused.answer.refused and refused.llm_calls == 0
+    assert refused.input_tokens is None
+
+
+def test_pipeline_answerer_tokens_are_none_when_provider_reports_nothing():
+    retriever = StubRetriever({"roll back?": [hit(1)]})
+    generator = ByQuestionGenerator({"roll back?": "Undo [1]."})
+
+    assert (
+        pipeline_answerer(retriever, generator, RetrieverConfig())("roll back?").input_tokens
+        is None
+    )
