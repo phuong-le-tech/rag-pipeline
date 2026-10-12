@@ -57,7 +57,7 @@ Each limit answers one way an agent can go wrong:
 
 | Limit | Default | Setting | What happens when it trips |
 |---|---|---|---|
-| Searches | 4 | `RAG_AGENT_MAX_STEPS` | extra tool calls get "Step limit reached"; one forced final turn |
+| Steps (searches, including invalid calls, duplicates and empty replies) | 4 | `RAG_AGENT_MAX_STEPS` | extra tool calls get "Step limit reached"; one forced final turn |
 | Time | 90 s | `RAG_AGENT_TIMEOUT_S` | checked between turns only, so a slow turn can overrun it |
 | Tokens | 30,000 | `RAG_AGENT_MAX_TOTAL_TOKENS` | checked between turns; then the forced final turn |
 | Duplicate queries | ignored | none | the model gets the earlier numbers, no second search |

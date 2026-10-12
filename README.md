@@ -172,7 +172,7 @@ Environment variables (or `.env` locally). Settings use the `RAG_` prefix; API k
 | `RAG_LLM_TIMEOUT_S` | `60` | per LLM request |
 | `RAG_AGENT_BACKEND` | unset (= `RAG_LLM_BACKEND`) | `--agent` only: `anthropic`, `openrouter`, `fake` |
 | `RAG_AGENT_MODEL` | unset (= the backend's model) | `--agent` only |
-| `RAG_AGENT_MAX_STEPS` | `4` | `--agent` only: searches per question (1–10) |
+| `RAG_AGENT_MAX_STEPS` | `4` | `--agent` only: steps per question (searches, invalid calls, empty replies) (1–10) |
 | `RAG_AGENT_TIMEOUT_S` | `90` | `--agent` only: checked between model turns |
 | `RAG_AGENT_MAX_TOTAL_TOKENS` | `30000` | `--agent` only: input + output tokens per question |
 | `RAG_EMBEDDING_BACKEND` | `local` | `openai` (needs `OPENAI_API_KEY`, dim 1536), `fake` |

@@ -255,6 +255,17 @@ def test_llm_error_hint_rate_limit_suggests_switching_openrouter_model():
     assert "RAG_OPENROUTER_MODEL" in hint
 
 
+def test_llm_error_hint_agent_rate_limit_names_agent_model_not_llm_model():
+    hint = cli.llm_error_hint(
+        _openai_error(openai.RateLimitError, 429),
+        Settings(llm_backend="openrouter"),
+        agent=True,
+    )
+
+    assert "RAG_AGENT_MODEL" in hint
+    assert "RAG_OPENROUTER_MODEL" not in hint
+
+
 @pytest.mark.integration
 def test_eval_command_prints_table_and_writes_results(tmp_path, monkeypatch, test_database_url):
     corpus = tmp_path / "corpus"

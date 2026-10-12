@@ -54,7 +54,7 @@ LLM_KEY_NAMES = {"anthropic": "ANTHROPIC_API_KEY", "openrouter": "OPENROUTER_API
 PREVIEW_CHARS = 120
 
 
-def llm_error_hint(exc: Exception, settings: Settings) -> str:
+def llm_error_hint(exc: Exception, settings: Settings, agent: bool = False) -> str:
     """Actionable next step for an LLM failure, by kind of error rather than one generic hint."""
     key = LLM_KEY_NAMES.get(settings.llm_backend, "the provider API key")
     if isinstance(exc, anthropic.RateLimitError | openai.RateLimitError) and "per-day" in str(exc):
@@ -65,7 +65,8 @@ def llm_error_hint(exc: Exception, settings: Settings) -> str:
     if isinstance(exc, anthropic.RateLimitError | openai.RateLimitError):
         hint = "The model is rate-limited: retry in a minute"
         if settings.llm_backend == "openrouter":
-            hint += ", or pick another free model with RAG_OPENROUTER_MODEL"
+            model_var = "RAG_AGENT_MODEL" if agent else "RAG_OPENROUTER_MODEL"
+            hint += f", or pick another free model with {model_var}"
         return hint + "."
     if isinstance(exc, anthropic.AuthenticationError | openai.AuthenticationError):
         return f"Authentication failed: check {key} in .env (never commit it)."
@@ -202,7 +203,7 @@ def ask_cmd(
                     update={"llm_backend": settings.agent_backend or settings.llm_backend}
                 )
             typer.secho(f"\nLLM call failed ({failed.llm_backend}): {exc}", fg="red", err=True)
-            typer.echo(llm_error_hint(exc, failed), err=True)
+            typer.echo(llm_error_hint(exc, failed, agent=agent), err=True)
             raise typer.Exit(1) from exc
 
     if agent_result is not None:

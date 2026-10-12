@@ -253,7 +253,7 @@ def _anthropic_messages(messages: list[Message]) -> list[dict]:
     out: list[dict] = []
     for m in messages:
         if m["role"] == "assistant":
-            blocks: list[dict] = [{"type": "text", "text": m["text"]}] if m["text"] else []
+            blocks: list[dict] = [{"type": "text", "text": m["text"]}] if m["text"].strip() else []
             for call in m["tool_calls"]:
                 blocks.append(
                     {
@@ -302,10 +302,12 @@ def _openai_messages(system: str, messages: list[Message]) -> list[dict]:
 
 def _parse_arguments(arguments: str) -> Any:
     # History is ours, but a model can emit bad JSON; the loop reports that as a tool error.
+    # Anthropic's tool_use.input must be an object, so any other JSON value also becomes {}.
     try:
-        return json.loads(arguments)
+        parsed = json.loads(arguments)
     except ValueError:
         return {}
+    return parsed if isinstance(parsed, dict) else {}
 
 
 def _secret(value: Any) -> str | None:

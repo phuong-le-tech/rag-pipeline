@@ -456,6 +456,30 @@ def test_anthropic_messages_tolerates_invalid_argument_json_in_history():
     ]
 
 
+def test_anthropic_messages_drops_whitespace_only_text_block():
+    history = [
+        {"role": "assistant", "text": "\n", "tool_calls": [ToolCall("a", "search_docs", "{}")]},
+    ]
+
+    assert _anthropic_messages(history) == [
+        {
+            "role": "assistant",
+            "content": [{"type": "tool_use", "id": "a", "name": "search_docs", "input": {}}],
+        }
+    ]
+
+
+@pytest.mark.parametrize("arguments", ["[1]", '"x"', "3"])
+def test_anthropic_messages_non_object_arguments_become_empty_input(arguments):
+    history = [
+        {"role": "assistant", "text": "", "tool_calls": [ToolCall("a", "search_docs", arguments)]},
+    ]
+
+    block = _anthropic_messages(history)[0]["content"][0]
+
+    assert block["input"] == {}
+
+
 class StubOpenAIToolCompletions:
     def __init__(self, response):
         self.response = response

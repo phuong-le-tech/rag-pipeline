@@ -1,7 +1,7 @@
 # Glossary
 
 **Agent**: a setup where the model decides whether, what and how often to call tools, instead
-of a fixed code path. Our agent mode lets it call `search_docs` up to four times. See chapter 8.
+of a fixed code path. Our agent mode lets it call `search_docs` up to four steps. See chapter 8.
 
 **Agent loop**: the code that runs model turns, executes the tool calls they ask for, and stops
 on an answer or a limit. Ours is hand-written in `src/rag/agent/loop.py`.
