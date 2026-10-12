@@ -34,7 +34,8 @@ that tool result, so the citation rules from chapter 5 still apply.
   `ToolResultEvent` for each step, then one `AgentResult`. The CLI prints the steps as they arrive.
 - [`src/rag/agent/tools.py`](../src/rag/agent/tools.py): the `search_docs` schema and
   `parse_search_args`. Bad arguments (not JSON, empty query, `k` outside 1–10) become an error
-  sentence the model reads, not a crash. `SearchTool` runs retrieval with the model's `k`.
+  sentence the model reads, not a crash. `SearchTool` runs retrieval with the model's `k`. The
+  CLI's `-k` does not apply in agent mode: the model picks `k` (1–10) for each search.
 - [`src/rag/agent/prompt.py`](../src/rag/agent/prompt.py): the agent's rules (answer only from
   tool results, cite numbers it was shown, refuse otherwise) and the text of the forced final turn.
 - [`src/rag/generate/generator.py`](../src/rag/generate/generator.py): `ToolGenerator` has one
@@ -79,8 +80,10 @@ checks the loop stops, so a bad model cannot run up the bill.
 - **Non-determinism.** The same question can take a different path on another run. Evaluation has
   to score answers over repeated runs and report the path, not just the answer.
 - **Free models and tool calling.** Tool-call support and argument quality vary by model. A model
-  that sends malformed arguments wastes a step; a model that never calls the tool just answers
-  from nothing and is refused by the citation rules.
+  that sends malformed arguments wastes a step. A model that never calls the tool answers without
+  passages: the loop accepts that text unless it starts with the refusal sentence, and any `[n]`
+  it writes is flagged as an invalid citation. The system prompt tells it to search first and to
+  refuse when the passages do not answer, but nothing forces that.
 - **Answers are not streamed in v1.** The loop needs the whole turn to see whether it is a tool
   call or the answer. Streaming the final turn is a later change.
 - **Opt-in.** `rag ask` without `--agent` is unchanged, so the measured pipeline defaults stay

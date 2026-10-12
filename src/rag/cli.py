@@ -195,8 +195,14 @@ def ask_cmd(
                     on_text=lambda piece: typer.echo(piece, nl=False),
                 )
         except (anthropic.AnthropicError, openai.OpenAIError) as exc:
-            typer.secho(f"\nLLM call failed ({settings.llm_backend}): {exc}", fg="red", err=True)
-            typer.echo(llm_error_hint(exc, settings), err=True)
+            # The agent may run on its own backend, so name that one in the message and hint.
+            failed = settings
+            if agent:
+                failed = settings.model_copy(
+                    update={"llm_backend": settings.agent_backend or settings.llm_backend}
+                )
+            typer.secho(f"\nLLM call failed ({failed.llm_backend}): {exc}", fg="red", err=True)
+            typer.echo(llm_error_hint(exc, failed), err=True)
             raise typer.Exit(1) from exc
 
     if agent_result is not None:

@@ -14,7 +14,8 @@ Newest first. Each entry: context, decision, consequences. Revisit when evals sa
   The final answer is not streamed in v1.
 - **Consequence**: more model calls and latency per question; behaviour varies run to run and must
   be measured in Phase 2 before it becomes a default. Tool-calling quality depends on the free
-  model: the live smoke test (Nemotron, then a fallback model if needed) is recorded here once run.
+  model. Smoke test 2026-10-12: the free Nemotron 3 Super model on OpenRouter makes valid tool
+  calls (1 search, 2 LLM calls, ~2,550 tokens on a Deployment vs StatefulSet question).
 
 ## 2026-10-12: Production v1 on Railway + Vercel, Kubernetes docs only
 - **Context**: the owner wants people to test the glass-box demo; it must be safe, cheap and

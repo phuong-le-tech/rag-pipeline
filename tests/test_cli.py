@@ -1,6 +1,8 @@
+import contextlib
 import json
 from dataclasses import replace
 
+import anthropic
 import httpx
 import openai
 import psycopg
@@ -178,6 +180,31 @@ def test_ask_agent_prints_steps_answer_and_counters(tmp_path, monkeypatch, test_
     assert "fake agent answer" in result.output
     assert "[1] Rollback" in result.output
     assert "stopped: answered" in result.output
+
+
+def test_ask_agent_error_hint_names_the_agent_backend(monkeypatch):
+    request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+    exc = anthropic.AuthenticationError(
+        "bad key", response=httpx.Response(401, request=request), body=None
+    )
+
+    def fail(*_args, **_kwargs):
+        raise exc
+
+    monkeypatch.setenv("RAG_EMBEDDING_BACKEND", "fake")
+    monkeypatch.setenv("RAG_LLM_BACKEND", "openrouter")
+    monkeypatch.setenv("RAG_AGENT_BACKEND", "anthropic")
+    monkeypatch.setattr(cli, "connect", lambda _settings: contextlib.nullcontext(object()))
+    monkeypatch.setattr(cli, "register_vector", lambda _conn: None)
+    monkeypatch.setattr(cli, "Retriever", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(cli, "_run_agent_with_trace", fail)
+
+    result = runner.invoke(cli.app, ["ask", "q", "--agent", "--no-rerank"])
+
+    assert result.exit_code == 1
+    assert "LLM call failed (anthropic)" in result.output
+    assert "ANTHROPIC_API_KEY" in result.output
+    assert "OPENROUTER_API_KEY" not in result.output
 
 
 def test_ask_agent_rejects_rewrite():

@@ -121,7 +121,7 @@ uv run rag ask "How do I roll back a deployment?"
 | `rag ingest CORPUS_ROOT [--no-prune]` | Incremental load → chunk → embed → store |
 | `rag search QUERY [--mode dense\|keyword\|hybrid] [--rerank] [-k N] [--no-generated]` | Ranked passages, no LLM |
 | `rag ask QUESTION [-k N] [--rewrite] [--no-rerank]` | Cited answer, streamed |
-| `rag ask QUESTION --agent [-k N] [--no-rerank]` | Agent mode: the LLM decides what to search, each step printed; answer not streamed |
+| `rag ask QUESTION --agent [--no-rerank]` | Agent mode: the LLM decides what to search and how many passages (k 1–10) per search; each step printed; answer not streamed |
 | `rag eval [--config NAME] [--limit N]` | Retrieval metrics per configuration, split by question origin |
 | `rag eval-answers [--config NAME] [--judge-backend B]` | Faithfulness, correctness, citations, refusals (LLM judge) |
 | `rag draft-questions --n N --seed S` | LLM-drafted golden questions (resumable) |
