@@ -645,3 +645,41 @@ def test_eval_answers_resume_must_exist(answers_run, tmp_path):
 
     assert result.exit_code == 2
     assert seen["evaluate"] is None
+
+
+def test_eval_answers_judge_gets_its_own_output_budget(answers_run, monkeypatch):
+    invoke, seen = answers_run
+    built: list[Settings] = []
+    real_make_generator = cli.make_generator
+
+    def spy_make_generator(settings):
+        built.append(settings)
+        return real_make_generator(settings)
+
+    monkeypatch.setattr(cli, "make_generator", spy_make_generator)
+
+    result = invoke("--judge-backend", "openrouter")
+
+    assert result.exit_code == 0, result.output
+    assert seen["evaluate"]["judge"].max_tokens == 8192
+    assert [s.llm_max_tokens for s in built] == [1024, 8192]
+    assert seen["meta"]["judge_max_tokens"] == 8192
+
+
+def test_eval_answers_judge_max_tokens_overrides_the_judge_budget_only(answers_run, monkeypatch):
+    invoke, seen = answers_run
+    built: list[Settings] = []
+    real_make_generator = cli.make_generator
+
+    def spy_make_generator(settings):
+        built.append(settings)
+        return real_make_generator(settings)
+
+    monkeypatch.setattr(cli, "make_generator", spy_make_generator)
+
+    result = invoke("--judge-backend", "openrouter", "--judge-max-tokens", "2048")
+
+    assert result.exit_code == 0, result.output
+    assert seen["evaluate"]["judge"].max_tokens == 2048
+    assert [s.llm_max_tokens for s in built] == [1024, 2048]
+    assert seen["meta"]["judge_max_tokens"] == 2048

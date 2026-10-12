@@ -159,6 +159,8 @@ The flags that matter for a comparison:
 - `--k N`: passages per search in pipeline mode only (default: the ablation's k). In agent mode
   the model picks k per search (default 5, max 10), so `--k` does not apply there.
 - `--judge-model ID`: the judge model, with `--judge-backend` choosing the provider.
+- `--judge-max-tokens N`: the judge's output budget (default 8192). Reasoning judges spend hundreds
+  of tokens thinking before the JSON, so a small budget truncates the reply and the judgement is lost.
 - `--price-in` / `--price-out`: USD per million tokens, so cost per question is computed from the
   token counts (default 0, which reports zero cost).
 - `--resume FILE`: continue an interrupted run from its checkpoint. The file must exist, so a

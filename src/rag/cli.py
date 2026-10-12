@@ -314,6 +314,13 @@ def eval_answers_cmd(
     judge_model: Annotated[
         str | None, typer.Option(help="Judge model id (default: the judge backend's model).")
     ] = None,
+    judge_max_tokens: Annotated[
+        int,
+        typer.Option(
+            min=1,
+            help="Output token budget for the judge; reasoning models think before answering.",
+        ),
+    ] = 8192,
     price_in: Annotated[float, typer.Option(help="USD per million input tokens.")] = 0.0,
     price_out: Annotated[float, typer.Option(help="USD per million output tokens.")] = 0.0,
 ) -> None:
@@ -328,7 +335,10 @@ def eval_answers_cmd(
     checkpoint = resume or out / f"{timestamp.replace(':', '-')}-answers.partial.jsonl"
     typer.echo(f"Checkpoint: {checkpoint}", err=True)
     judge_backend_name = judge_backend or settings.llm_backend
-    judge_updates: dict[str, str] = {"llm_backend": judge_backend_name}
+    judge_updates: dict[str, str | int] = {
+        "llm_backend": judge_backend_name,
+        "llm_max_tokens": judge_max_tokens,
+    }
     if judge_model:
         model_field = {"openrouter": "openrouter_model", "anthropic": "llm_model"}.get(
             judge_backend_name
@@ -389,6 +399,7 @@ def eval_answers_cmd(
         "k": None if mode == "agent" else retriever_config.k,
         "llm": _llm_label(settings),
         "judge": _llm_label(judge_settings),
+        "judge_max_tokens": judge_max_tokens,
         "prices": {"in": price_in, "out": price_out},
     }
     if mode == "agent":
