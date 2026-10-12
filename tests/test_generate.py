@@ -550,3 +550,59 @@ def test_openai_messages_empty_assistant_text_becomes_null_content():
     ]
 
     assert _openai_messages("S", history)[1]["content"] is None
+
+
+def test_make_tool_generator_falls_back_to_llm_backend_and_model():
+    from rag.generate.generator import make_tool_generator
+
+    settings = Settings(llm_backend="openrouter", openrouter_model="m-or", _env_file=None)
+
+    gen = make_tool_generator(settings)
+
+    assert isinstance(gen, OpenAICompatibleGenerator)
+    assert gen.model == "m-or"
+
+
+def test_agent_model_overrides_only_the_agent_not_make_generator():
+    from rag.generate.generator import make_tool_generator
+
+    settings = Settings(
+        llm_backend="openrouter",
+        openrouter_model="m-or",
+        agent_model="m-agent",
+        _env_file=None,
+    )
+
+    assert make_tool_generator(settings).model == "m-agent"
+    assert make_generator(settings).model == "m-or"
+
+
+def test_agent_backend_anthropic_overrides_openrouter_llm_backend():
+    from rag.generate.generator import make_tool_generator
+
+    settings = Settings(
+        llm_backend="openrouter",
+        agent_backend="anthropic",
+        llm_model="claude-x",
+        _env_file=None,
+    )
+
+    gen = make_tool_generator(settings)
+
+    assert isinstance(gen, ClaudeGenerator)
+    assert gen.model == "claude-x"
+
+
+def test_fake_tool_generator_scripts_a_search_then_a_cited_answer():
+    from rag.generate.generator import make_tool_generator
+
+    gen = make_tool_generator(Settings(agent_backend="fake", _env_file=None))
+
+    first = gen.chat("sys", [{"role": "user", "content": "q"}], [])
+    second = gen.chat("sys", [{"role": "user", "content": "q"}], [])
+
+    assert isinstance(gen, ScriptedToolGenerator)
+    assert first.tool_calls == (ToolCall("fake-1", "search_docs", '{"query": "rollback"}'),)
+    assert first.text == ""
+    assert second.tool_calls == ()
+    assert "[1]" in second.text

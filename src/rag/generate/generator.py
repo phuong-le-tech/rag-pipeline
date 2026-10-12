@@ -330,3 +330,29 @@ def make_generator(settings: Settings) -> Generator:
         api_key=_secret(settings.anthropic_api_key),
         timeout=settings.llm_timeout_s,
     )
+
+
+def make_tool_generator(settings: Settings) -> ToolGenerator:
+    backend = settings.agent_backend or settings.llm_backend
+    match backend:
+        case "fake":
+            return ScriptedToolGenerator(
+                [
+                    Turn("", (ToolCall("fake-1", "search_docs", '{"query": "rollback"}'),)),
+                    Turn("This is a fake agent answer [1]."),
+                ]
+            )
+        case "openrouter":
+            return OpenAICompatibleGenerator(
+                model=settings.agent_model or settings.openrouter_model,
+                max_tokens=settings.llm_max_tokens,
+                base_url=settings.openrouter_base_url,
+                api_key=_secret(settings.openrouter_api_key),
+                timeout=settings.llm_timeout_s,
+            )
+    return ClaudeGenerator(
+        model=settings.agent_model or settings.llm_model,
+        max_tokens=settings.llm_max_tokens,
+        api_key=_secret(settings.anthropic_api_key),
+        timeout=settings.llm_timeout_s,
+    )

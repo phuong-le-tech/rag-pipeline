@@ -483,3 +483,25 @@ def test_events_describe_errors_and_successful_searches():
     assert ok_result.numbers == (1,) and ok_result.hits == (hit(3),)
     assert ok_result.error is None and ok_result.duplicate is False
     assert [e.step for e in r[:4]] == [1, 1, 2, 2]
+
+
+def test_agent_limits_maps_settings_values():
+    from rag.agent.loop import agent_limits
+    from rag.config import Settings
+
+    settings = Settings(
+        agent_max_steps=3, agent_timeout_s=12.5, agent_max_total_tokens=999, _env_file=None
+    )
+
+    assert agent_limits(settings) == Limits(max_steps=3, timeout_s=12.5, max_total_tokens=999)
+
+
+def test_agent_max_steps_is_bounded_between_one_and_ten():
+    from pydantic import ValidationError
+
+    from rag.config import Settings
+
+    with pytest.raises(ValidationError):
+        Settings(agent_max_steps=0, _env_file=None)
+    with pytest.raises(ValidationError):
+        Settings(agent_max_steps=11, _env_file=None)

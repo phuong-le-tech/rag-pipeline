@@ -12,6 +12,7 @@ from typing import Literal
 
 from rag.agent.prompt import AGENT_SYSTEM, FORCE_ANSWER
 from rag.agent.tools import SEARCH_DOCS, SearchResult, parse_search_args
+from rag.config import Settings
 from rag.generate.answer import Answer, finish_answer
 from rag.generate.generator import Message, ToolCall, ToolGenerator, Turn
 from rag.generate.prompt import REFUSAL, format_numbered
@@ -78,6 +79,14 @@ class Limits:
 
 
 DEFAULT_LIMITS = Limits()
+
+
+def agent_limits(settings: Settings) -> Limits:
+    return Limits(
+        max_steps=settings.agent_max_steps,
+        timeout_s=settings.agent_timeout_s,
+        max_total_tokens=settings.agent_max_total_tokens,
+    )
 
 
 @dataclass(frozen=True)
