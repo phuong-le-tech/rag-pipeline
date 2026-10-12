@@ -42,3 +42,21 @@ jobs:
         run: uv run pytest -m "not integration" --cov=rag --cov-report=term
       - name: Integration tests (Postgres + pgvector)
         run: uv run pytest -m integration
+
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm test
+      - run: npm run build

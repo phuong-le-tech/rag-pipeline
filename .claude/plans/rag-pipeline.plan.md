@@ -69,16 +69,17 @@ ablation table is the centrepiece of the README.
 
 ### Phase 5 — API + UI + deploy (M) — "glass-box RAG" demo (agreed 2026-10-10, after Phase 4)
 - Decided 2026-10-11: Next.js UI + FastAPI SSE; Markdown uploads first, other formats later
-- [x] UI shell in `web/`, ported from the Open Design prototype, running on a mock engine
-- [ ] Pipeline emits structured progress events (stage, progress, timing) usable by CLI and API
+- [x] UI shell in `web/`, ported from the Open Design prototype
+- [x] Production v1 (k8s only): API + guards, privacy/legal, Docker + Railway + Vercel runbook (`.claude/plans/production-v1.plan.md`)
+- [x] Pipeline emits structured progress events (stage, progress, timing) usable by CLI and API
 - [ ] `collection` column + retrieval filter: uploads never mix with the k8s index or evals
 - [ ] Loaders: PDF (pypdf), URL (trafilatura, SSRF-safe: block private IPs, size/time limits), pasted text
-- [ ] FastAPI: upload/ingest with SSE progress; `/search`; `/ask` streaming with retrieval steps
+- [x] FastAPI `/ask` streaming with retrieval steps (SSE) — upload/ingest endpoint still to do
 - [ ] UI ingest view: load → clean → chunk → embed (progress) → store, chunk previews
-- [ ] UI ask view: query embed, dense/keyword lists, RRF, rerank before/after, streamed answer
-- [ ] Clickable [n] citations open the exact passage; invented citations flagged
+- [x] UI ask view: query embed, dense/keyword lists, RRF, rerank before/after, streamed answer
+- [x] Clickable [n] citations open the exact passage; invented citations kept as plain text
 - [ ] Prebuilt "Kubernetes docs" collection + link to eval results (interview story)
-- [ ] Limits: file size/pages, per-IP rate limit, daily LLM cost cap, 24 h TTL on uploads
+- [x] Limits: per-IP rate limit, daily LLM cap, concurrency cap, input size — upload limits/TTL with uploads
 - [ ] Judge output via structured output (tool calling) when the generator interface changes
 - [ ] Dockerfile, deploy (e.g. Fly.io + Neon), secrets in the platform; latency/cost logs
 - [ ] docs/07-serving.md chapter

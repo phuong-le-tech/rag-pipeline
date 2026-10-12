@@ -7,9 +7,9 @@ every default. The owner is learning RAG through this project and will demo it i
 ## Before any work
 - Read `.claude/plans/rag-pipeline.plan.md`: phases, decisions, risks. Tick boxes as tasks land.
 - **Status: Phases 1–4 done. Next: Phase 5, the "glass-box" web UI** (upload file/URL/text,
-  live pipeline progress, visible retrieval steps, clickable citations). Decided: Next.js
-  frontend (designed by the owner in Open Design) + FastAPI backend with SSE; Markdown uploads
-  only in the first version, other formats later.
+  live pipeline progress, visible retrieval steps, clickable citations). Done: Next.js UI on
+  the real pipeline via FastAPI + SSE, Kubernetes docs only, guards, privacy/legal, deploy
+  config (`.claude/plans/production-v1.plan.md`). Next in Phase 5: uploads (Markdown first).
 - Work the current phase in order; do not start a later phase without being asked.
 
 ## Docs are a deliverable
@@ -41,8 +41,10 @@ uv run rag review-drafts                  # human review: y/e/n/q, resumable, ap
 uv run ruff format . && uv run ruff check --no-cache .   # --no-cache: match CI exactly
 uv run pytest -m "not integration" --cov=rag   # unit tests
 uv run pytest -m integration                   # needs compose DB
+uv run uvicorn rag.api.app:main --factory --port 8000   # API for the UI (DB + index needed)
+scripts/publish_index.sh "$TARGET_DATABASE_URL"   # copy local index to a remote Postgres
 cd web && npm install && npm run dev           # glass-box UI, http://localhost:3000
-cd web && npm test && npm run build            # mock-engine tests + production build
+cd web && npm test && npm run build            # API-client tests + production build
 ```
 Long LLM or ingest jobs run in the background with output to `data/*.log`; never poll with sleep.
 
@@ -75,10 +77,16 @@ Long LLM or ingest jobs run in the background with output to `data/*.log`; never
   draft-questions, review-drafts. `ask_config()` holds the measured `rag ask` defaults.
 - `evals/`: `golden.jsonl` (94: 25 human, 69 reviewed LLM drafts tagged `reviewer:…`),
   `unanswerable.jsonl` (15), `drafts*.jsonl/.txt` (audit trail); `evals/results/` gitignored
+- `src/rag/api/`: `app.py` (`create_app(settings, services)`; `/health`, `/ready`,
+  `/api/collection`, `POST /api/ask` → SSE `stage`/`context`/`token`/`done`/`error`;
+  `run_ask` always releases its concurrency slot), `guards.py` (`RateLimiter`, `DailyBudget`).
+  Uses `Retriever.retrieve(..., on_stage=)` and `generate.answer.stream_answer`.
 - `web/`: Next.js 16 / React 19 UI ported from the Open Design prototype. `app/globals.css` is
   the design's CSS verbatim (tokens on `:root`, dark default); `components/GlassBox.tsx` holds
-  a mutable view-model + actions (mirrors the prototype), `Panels.tsx` / `Overlays.tsx` render;
-  `lib/mockEngine.ts` simulates retrieval in the browser until the FastAPI SSE client replaces it.
+  a mutable view-model + actions and maps SSE events onto it; `Panels.tsx` / `Overlays.tsx`
+  render; `lib/api.ts` is the API client; `app/privacy`, `app/legal`; `next.config.ts` sets CSP.
+- Deploy: `Dockerfile` (models baked in, `--no-access-log` so IPs never hit logs),
+  `railway.json`, `scripts/publish_index.sh`. Runbook in README "Deploy".
 - Integration tests use a separate `rag_test` DB created by `tests/conftest.py` (dim 8);
   they never touch the real index and skip if Postgres is down.
 
@@ -136,6 +144,8 @@ Long LLM or ingest jobs run in the background with output to `data/*.log`; never
   50 requests without credits, 1,000 with credits. Nemotron 3 Super is the working default.
 - LLM judges sometimes emit invalid JSON: `parse_judgement` re-asks, then repairs, then
   validates shape; always report judge failures.
+- API guards (rate limit, daily budget, concurrency) are in process memory: run one replica.
+- Never log question text or client IPs (privacy page promises it).
 - Ruff caches results: lint with `--no-cache` before pushing (CI has no cache).
 - The repo sits inside the parent `Project/` folder but has its own git remote
   (`phuong-le-tech/rag-pipeline`); run git commands from this folder.

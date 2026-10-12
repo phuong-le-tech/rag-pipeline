@@ -48,7 +48,8 @@
 def test_retrieve_reports_each_stage(indexed):
     seen = []
     hits = Retriever(indexed, EMB).retrieve(
-        "rollback", RetrieverConfig(mode="hybrid", k=2, candidates=4),
+        "rollback",
+        RetrieverConfig(mode="hybrid", k=2, candidates=4),
         on_stage=lambda name, stage_hits, ms: seen.append((name, len(stage_hits), ms >= 0)),
     )
     assert [s[0] for s in seen] == ["dense", "keyword", "fusion"]
@@ -79,28 +80,45 @@ def _timed(name: str, on_stage: StageHook | None, fn: Callable[[], list[Hit]]) -
 Rewrite `_ranked_lists` / `_first_stage` / `retrieve` to route every step through `_timed`:
 
 ```python
-    def _ranked_lists(self, query, config, on_stage):
-        lists = []
-        if config.mode in ("dense", "hybrid"):
-            lists.append(_timed("dense", on_stage, lambda: dense_search(
-                self.conn, self.embedder.embed_query(query), config.candidates,
-                config.include_generated)))
-        if config.mode in ("keyword", "hybrid"):
-            lists.append(_timed("keyword", on_stage, lambda: keyword_search(
-                self.conn, query, config.candidates, config.include_generated)))
-        return lists
+def _ranked_lists(self, query, config, on_stage):
+    lists = []
+    if config.mode in ("dense", "hybrid"):
+        lists.append(
+            _timed(
+                "dense",
+                on_stage,
+                lambda: dense_search(
+                    self.conn,
+                    self.embedder.embed_query(query),
+                    config.candidates,
+                    config.include_generated,
+                ),
+            )
+        )
+    if config.mode in ("keyword", "hybrid"):
+        lists.append(
+            _timed(
+                "keyword",
+                on_stage,
+                lambda: keyword_search(
+                    self.conn, query, config.candidates, config.include_generated
+                ),
+            )
+        )
+    return lists
 
-    def _first_stage(self, query, config, limit, on_stage=None):
-        lists = self._ranked_lists(query, config, on_stage)
-        if config.mode != "hybrid":
-            return lists[0][:limit]
-        by_id = {hit.chunk_id: hit for hits in lists for hit in hits}
 
-        def fuse() -> list[Hit]:
-            fused = rrf([[h.chunk_id for h in hits] for hits in lists], config.rrf_k, limit)
-            return [replace(by_id[chunk_id], score=score) for chunk_id, score in fused]
+def _first_stage(self, query, config, limit, on_stage=None):
+    lists = self._ranked_lists(query, config, on_stage)
+    if config.mode != "hybrid":
+        return lists[0][:limit]
+    by_id = {hit.chunk_id: hit for hits in lists for hit in hits}
 
-        return _timed("fusion", on_stage, fuse)
+    def fuse() -> list[Hit]:
+        fused = rrf([[h.chunk_id for h in hits] for hits in lists], config.rrf_k, limit)
+        return [replace(by_id[chunk_id], score=score) for chunk_id, score in fused]
+
+    return _timed("fusion", on_stage, fuse)
 ```
 
 and in `retrieve(self, query, config, on_stage: StageHook | None = None)`: pass `on_stage` to `_first_stage`, and wrap the rerank call: `hits = _timed("rerank", on_stage, lambda: self.reranker.rerank(query, hits))` (bind `hits` first: `first = hits` then `lambda: self.reranker.rerank(query, first)`).
@@ -170,8 +188,9 @@ def stream_answer(
         yield Answer(text.strip(), (), (), True, hits)
         return
     report = check_citations(text, num_sources=len(hits))
-    yield Answer(text, tuple(Source(n, hits[n - 1]) for n in report.cited), report.invalid,
-                 False, hits)
+    yield Answer(
+        text, tuple(Source(n, hits[n - 1]) for n in report.cited), report.invalid, False, hits
+    )
 
 
 def answer_question(question, retriever, generator, config, on_text=None) -> Answer:
@@ -184,8 +203,9 @@ def answer_question(question, retriever, generator, config, on_text=None) -> Ans
         if text.strip().startswith(REFUSAL):
             return Answer(text.strip(), (), (), True, hits)
         report = check_citations(text, num_sources=len(hits))
-        return Answer(text, tuple(Source(n, hits[n - 1]) for n in report.cited),
-                      report.invalid, False, hits)
+        return Answer(
+            text, tuple(Source(n, hits[n - 1]) for n in report.cited), report.invalid, False, hits
+        )
     for item in stream_answer(question, hits, generator):
         if isinstance(item, Answer):
             return item
@@ -234,8 +254,8 @@ def test_rate_limiter_blocks_after_limit_and_recovers():
     t = [0.0]
     rl = RateLimiter(per_minute=2, clock=lambda: t[0])
     assert rl.check("a") == 0 and rl.check("a") == 0
-    assert rl.check("a") > 0          # third call within the minute: seconds to wait
-    assert rl.check("b") == 0         # other clients unaffected
+    assert rl.check("a") > 0  # third call within the minute: seconds to wait
+    assert rl.check("b") == 0  # other clients unaffected
     t[0] = 61.0
     assert rl.check("a") == 0
 
@@ -310,8 +330,16 @@ from rag.config import Settings
 from rag.generate.generator import FakeGenerator
 from rag.retrieval.search import Hit
 
-HIT = Hit(7, 0.9, "d.md", "https://kubernetes.io/docs/d/", "Deploy", "Deploy > Roll back",
-          "Run kubectl rollout undo.", False)
+HIT = Hit(
+    7,
+    0.9,
+    "d.md",
+    "https://kubernetes.io/docs/d/",
+    "Deploy",
+    "Deploy > Roll back",
+    "Run kubectl rollout undo.",
+    False,
+)
 
 
 class StagedFake:
@@ -327,8 +355,9 @@ def make_client(gen=None, **overrides):
         yield StagedFake()
 
     settings = Settings(_env_file=None, **overrides)
-    services = Services(factory, gen or FakeGenerator("Use rollout undo [1]."),
-                        lambda: {"docs": 1, "chunks": 1})
+    services = Services(
+        factory, gen or FakeGenerator("Use rollout undo [1]."), lambda: {"docs": 1, "chunks": 1}
+    )
     return TestClient(create_app(settings, services))
 
 
@@ -421,7 +450,9 @@ from rag.retrieval.search import Hit
 log = logging.getLogger("rag.api")
 CONTENT_LIMIT = 2000  # characters of passage text sent to the browser
 STAGE_HITS = 10  # hits per stage shown in the UI
-DAILY_LIMIT_MSG = "Daily answer limit reached. Retrieval still works; answers resume tomorrow (UTC)."
+DAILY_LIMIT_MSG = (
+    "Daily answer limit reached. Retrieval still works; answers resume tomorrow (UTC)."
+)
 LLM_FAILED_MSG = "The model call failed. Retrieval results are kept; retry in a moment."
 
 
@@ -440,8 +471,14 @@ class Services:
 
 
 def hit_json(h: Hit) -> dict:
-    return {"id": h.chunk_id, "heading": h.heading, "title": h.title, "url": h.url,
-            "content": h.content[:CONTENT_LIMIT], "score": round(h.score, 5)}
+    return {
+        "id": h.chunk_id,
+        "heading": h.heading,
+        "title": h.title,
+        "url": h.url,
+        "content": h.content[:CONTENT_LIMIT],
+        "score": round(h.score, 5),
+    }
 
 
 def sse(event: str, data: dict) -> str:
@@ -487,8 +524,9 @@ def create_app(settings: Settings, services: Services | None = None) -> FastAPI:
             app.state.services = default_services(settings)
         yield
 
-    app = FastAPI(title="glass-box RAG", lifespan=lifespan, docs_url=None, redoc_url=None,
-                  openapi_url=None)
+    app = FastAPI(
+        title="glass-box RAG", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None
+    )
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[o.strip() for o in settings.cors_origins.split(",") if o.strip()],
@@ -500,8 +538,9 @@ def create_app(settings: Settings, services: Services | None = None) -> FastAPI:
     app.state.limiter = RateLimiter(settings.rate_limit_per_minute)
     app.state.budget = DailyBudget(settings.daily_llm_limit)
     app.state.slots = threading.Semaphore(settings.max_concurrent_asks)
-    llm_model = (settings.openrouter_model if settings.llm_backend == "openrouter"
-                 else settings.llm_model)
+    llm_model = (
+        settings.openrouter_model if settings.llm_backend == "openrouter" else settings.llm_model
+    )
 
     @app.get("/health")
     def health() -> dict:
@@ -518,15 +557,22 @@ def create_app(settings: Settings, services: Services | None = None) -> FastAPI:
 
     @app.get("/api/collection")
     def collection(request: Request) -> dict:
-        return {"name": "Kubernetes docs", **request.app.state.services.stats(),
-                "llm_model": llm_model, "embedding_model": settings.embedding_model_name()}
+        return {
+            "name": "Kubernetes docs",
+            **request.app.state.services.stats(),
+            "llm_model": llm_model,
+            "embedding_model": settings.embedding_model_name(),
+        }
 
     @app.post("/api/ask")
     def ask(body: AskRequest, request: Request):
         wait = request.app.state.limiter.check(request.client.host if request.client else "?")
         if wait:
-            return JSONResponse({"error": "rate_limited", "retry_after": wait}, status_code=429,
-                                headers={"Retry-After": str(wait)})
+            return JSONResponse(
+                {"error": "rate_limited", "retry_after": wait},
+                status_code=429,
+                headers={"Retry-After": str(wait)},
+            )
         slots = request.app.state.slots
         if not slots.acquire(blocking=False):
             return JSONResponse({"error": "busy"}, status_code=503)
@@ -543,17 +589,32 @@ def create_app(settings: Settings, services: Services | None = None) -> FastAPI:
     return app
 
 
-def run_ask(question, config, services: Services, budget: DailyBudget,
-            slots: threading.Semaphore) -> Iterator[str]:
+def run_ask(
+    question, config, services: Services, budget: DailyBudget, slots: threading.Semaphore
+) -> Iterator[str]:
     """One ask as SSE: stages, tokens, then done or error. Always releases its slot."""
-    rid, start, timings, status, generating = uuid.uuid4().hex[:8], time.perf_counter(), {}, "ok", False
+    rid, start, timings, status, generating = (
+        uuid.uuid4().hex[:8],
+        time.perf_counter(),
+        {},
+        "ok",
+        False,
+    )
     try:
         staged: list[str] = []
 
         def on_stage(name: str, hits: list[Hit], ms: float) -> None:
             timings[name] = round(ms)
-            staged.append(sse("stage", {"name": name, "ms": round(ms),
-                                        "hits": [hit_json(h) for h in hits[:STAGE_HITS]]}))
+            staged.append(
+                sse(
+                    "stage",
+                    {
+                        "name": name,
+                        "ms": round(ms),
+                        "hits": [hit_json(h) for h in hits[:STAGE_HITS]],
+                    },
+                )
+            )
 
         with services.retriever_factory() as retriever:
             hits = tuple(retriever.retrieve(question, config, on_stage=on_stage))
@@ -570,16 +631,28 @@ def run_ask(question, config, services: Services, budget: DailyBudget,
                 yield sse("token", {"text": item})
         generating = False
         timings["generate"] = round((time.perf_counter() - gen_start) * 1000)
-        yield sse("done", {
-            "text": result.text, "refused": result.refused,
-            "sources": [{"n": s.number, "id": s.hit.chunk_id} for s in result.sources],
-            "invalid": list(result.invalid_citations),
-            "ms": round((time.perf_counter() - start) * 1000)})
+        yield sse(
+            "done",
+            {
+                "text": result.text,
+                "refused": result.refused,
+                "sources": [{"n": s.number, "id": s.hit.chunk_id} for s in result.sources],
+                "invalid": list(result.invalid_citations),
+                "ms": round((time.perf_counter() - start) * 1000),
+            },
+        )
     except Exception:  # the stream already started: report in-band instead of a broken response
         status = "llm_failed" if generating else "failed"
         log.exception("ask %s failed", rid)
-        yield sse("error", {"code": status, "message": LLM_FAILED_MSG if generating
-                            else "Something went wrong on the server. Please retry."})
+        yield sse(
+            "error",
+            {
+                "code": status,
+                "message": LLM_FAILED_MSG
+                if generating
+                else "Something went wrong on the server. Please retry.",
+            },
+        )
     finally:
         slots.release()
         log.info(json.dumps({"id": rid, "status": status, "ms": timings}))

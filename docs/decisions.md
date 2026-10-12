@@ -2,6 +2,16 @@
 
 Newest first. Each entry: context, decision, consequences. Revisit when evals say otherwise.
 
+## 2026-10-12: Production v1 on Railway + Vercel, Kubernetes docs only
+- **Context**: the owner wants people to test the glass-box demo; it must be safe, cheap and
+  honest about data. Uploads would add storage, cleanup and abuse surface.
+- **Decision**: FastAPI service streaming each stage over SSE; guards for input size, rate (10/min
+  per IP), daily LLM calls (300), concurrency (2) and CORS; nothing stored, no question text or IP
+  in logs; privacy and legal pages with CC BY 4.0 attribution; index copied to Railway Postgres
+  with `pg_dump`; models baked into the image. Uploads stay off for v1.
+- **Consequence**: one replica only (guards in memory); ~$5/month for Railway; the free LLM's
+  upstream limits can still fail an answer, which the UI reports with a retry.
+
 ## 2026-10-11: Free OpenRouter model is the default LLM backend
 - **Context**: Claude Sonnet costs too much for everyday use and demos.
 - **Decision**: `RAG_LLM_BACKEND` defaults to `openrouter` with

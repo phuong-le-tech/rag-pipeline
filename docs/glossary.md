@@ -92,3 +92,18 @@ score calibration between systems.
 
 **tsvector / GIN**: Postgres full-text document representation and the index type that makes it
 fast.
+
+**SSE (server-sent events)**: a long HTTP response where the server writes `event:`/`data:` lines
+as things happen; used to stream pipeline stages and answer tokens.
+
+**CORS**: the browser rule that lets a page call an API on another origin only if the API allows
+that origin. Our API allows only the deployed UI.
+
+**CSP (Content Security Policy)**: a response header listing where a page may load scripts and
+send requests from; limits the damage of injected content.
+
+**Rate limiting**: capping requests per client per time window (here 10 questions per minute per
+IP) so one user or bot can't monopolise the service.
+
+**Readiness probe**: an endpoint (`/ready`) the host checks before sending traffic; ours fails
+until the database is reachable and the index is non-empty.
