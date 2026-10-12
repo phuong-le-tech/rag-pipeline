@@ -16,7 +16,7 @@ from rag.generate.generator import (
     _openai_messages,
     make_generator,
 )
-from rag.generate.prompt import build_prompt
+from rag.generate.prompt import build_prompt, format_numbered
 from rag.retrieval.retriever import RetrieverConfig
 from rag.retrieval.search import Hit
 
@@ -48,6 +48,14 @@ def test_prompt_numbers_context_blocks_with_heading_and_url():
     assert "[2]" in user
     assert user.rstrip().endswith("How to roll back?")
     assert "only" in system.lower() and "[n]" in system
+
+
+def test_format_numbered_uses_the_given_number_and_keeps_block_layout():
+    block = format_numbered([(3, hit(1, "Use rollout undo."))])
+
+    assert block.startswith("[3] Deployments > Rolling back\n")
+    assert "\nSource: https://kubernetes.io/docs/x1/\n" in block
+    assert block.endswith("Use rollout undo.")
 
 
 def test_prompt_rejects_empty_context():

@@ -10,7 +10,7 @@ from rag.generate.prompt import REFUSAL, build_prompt
 from rag.retrieval.retriever import RetrieverConfig
 from rag.retrieval.search import Hit
 
-__all__ = ["REFUSAL", "Answer", "Source", "answer_question", "stream_answer"]
+__all__ = ["REFUSAL", "Answer", "Source", "answer_question", "finish_answer", "stream_answer"]
 
 
 class SupportsRetrieve(Protocol):
@@ -36,7 +36,7 @@ def _refusal(retrieved: tuple[Hit, ...] = ()) -> Answer:
     return Answer(REFUSAL, (), (), True, retrieved)
 
 
-def _finish(text: str, hits: tuple[Hit, ...]) -> Answer:
+def finish_answer(text: str, hits: tuple[Hit, ...]) -> Answer:
     if text.strip().startswith(REFUSAL):
         return Answer(text.strip(), (), (), True, hits)
     report = check_citations(text, num_sources=len(hits))
@@ -56,7 +56,7 @@ def stream_answer(
     for piece in generator.stream(system, user):
         pieces.append(piece)
         yield piece
-    yield _finish("".join(pieces), hits)
+    yield finish_answer("".join(pieces), hits)
 
 
 def answer_question(
@@ -70,7 +70,7 @@ def answer_question(
     hits = tuple(retriever.retrieve(question, config))
     if on_text is None and hits:
         system, user = build_prompt(question, hits)
-        return _finish(generator.generate(system, user), hits)  # evals use generate()
+        return finish_answer(generator.generate(system, user), hits)  # evals use generate()
     for item in stream_answer(question, hits, generator):
         if isinstance(item, Answer):
             return item

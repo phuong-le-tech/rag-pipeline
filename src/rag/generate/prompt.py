@@ -21,12 +21,17 @@ Rules:
 - Be concise: a short answer, then commands or YAML if the context provides them."""
 
 
-def format_context(hits: Sequence[Hit]) -> str:
+def format_numbered(pairs: Sequence[tuple[int, Hit]]) -> str:
+    """Render ``(number, hit)`` pairs; the numbers are used as given, not renumbered."""
     blocks = []
-    for number, hit in enumerate(hits, start=1):
+    for number, hit in pairs:
         heading = hit.heading or hit.title
         blocks.append(f"[{number}] {heading}\nSource: {hit.url}\n{hit.content}")
     return "\n\n---\n\n".join(blocks)
+
+
+def format_context(hits: Sequence[Hit]) -> str:
+    return format_numbered(list(enumerate(hits, start=1)))
 
 
 def build_prompt(question: str, hits: Sequence[Hit]) -> tuple[str, str]:
