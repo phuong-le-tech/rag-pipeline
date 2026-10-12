@@ -630,3 +630,84 @@ def test_fake_tool_generator_scripts_a_search_then_a_cited_answer():
     assert first.text == ""
     assert second.tool_calls == ()
     assert "[1]" in second.text
+
+
+# --- Token usage counters ---------------------------------------------------------------
+
+
+def test_usage_add_sums_known_values_and_flags_reported():
+    from rag.generate.generator import Usage
+
+    usage = Usage()
+    usage.add(None, None)
+    assert usage == Usage(0, 0, False)
+
+    usage.add(100, 20)
+    usage.add(50, None)
+    assert usage == Usage(150, 20, True)
+
+
+def test_claude_generator_counts_usage_from_generate_and_chat():
+    class Messages:
+        def __init__(self):
+            self.responses = [
+                SimpleNamespace(
+                    content=[SimpleNamespace(type="text", text="Hi")],
+                    usage=SimpleNamespace(input_tokens=100, output_tokens=20),
+                ),
+                SimpleNamespace(
+                    content=[SimpleNamespace(type="text", text="Yo")],
+                    usage=SimpleNamespace(input_tokens=50, output_tokens=5),
+                ),
+            ]
+
+        def create(self, **request):
+            return self.responses.pop(0)
+
+    gen = ClaudeGenerator(model="m", max_tokens=8, client=SimpleNamespace(messages=Messages()))
+
+    gen.generate("S", "U")
+    gen.chat("S", [{"role": "user", "content": "U"}], [])
+
+    assert gen.usage.input_tokens == 150
+    assert gen.usage.output_tokens == 25
+    assert gen.usage.reported is True
+
+
+def test_openai_generator_without_usage_block_stays_unreported():
+    gen = OpenAICompatibleGenerator(
+        model="m", max_tokens=64, client=openai_client(StubCompletions())
+    )
+
+    gen.generate("S", "U")
+
+    assert gen.usage.reported is False
+    assert gen.usage.input_tokens == 0
+
+
+def test_openai_generator_counts_usage_from_generate():
+    class Completions(StubCompletions):
+        def create(self, **request):
+            response = super().create(**request)
+            response.usage = SimpleNamespace(prompt_tokens=30, completion_tokens=7)
+            return response
+
+    gen = OpenAICompatibleGenerator(model="m", max_tokens=64, client=openai_client(Completions()))
+
+    gen.generate("S", "U")
+
+    assert (gen.usage.input_tokens, gen.usage.output_tokens, gen.usage.reported) == (30, 7, True)
+
+
+def test_usage_of_returns_none_for_generator_without_counters():
+    from rag.generate.generator import usage_of
+
+    assert usage_of(FakeGenerator()) is None
+
+
+def test_usage_of_returns_counter_of_real_generator():
+    from rag.generate.generator import usage_of
+
+    gen = ClaudeGenerator(model="m", max_tokens=8, client=SimpleNamespace())
+
+    assert usage_of(gen) is gen.usage

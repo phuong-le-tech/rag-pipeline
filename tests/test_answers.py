@@ -194,3 +194,11 @@ def test_answers_markdown_lists_key_metrics():
 
     assert "Faithfulness" in table and "Refusal on unanswerable" in table
     assert "0.750" in table
+
+
+def test_usage_of_unwraps_retrying_generator():
+    from rag.generate.generator import ClaudeGenerator, usage_of
+
+    gen = ClaudeGenerator(model="m", max_tokens=8, client=object())
+
+    assert usage_of(RetryingGenerator(gen)) is gen.usage
