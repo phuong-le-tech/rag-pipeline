@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import pytest
 
@@ -84,3 +85,34 @@ def test_unknown_sources_lists_typos_against_index():
     ]
 
     assert unknown_sources(items, known={"real.md"}) == {"a": ("typo.md",)}
+
+
+def test_load_golden_accepts_multi_origin(tmp_path):
+    (item,) = load_golden(write_jsonl(tmp_path / "g.jsonl", [{**ROW, "origin": "multi"}]))
+
+    assert item.origin == "multi"
+
+
+MULTI_DRAFTS = Path(__file__).resolve().parents[1] / "evals" / "drafts-multi.jsonl"
+CORPUS = Path(__file__).resolve().parents[1] / "data" / "k8s-docs"
+
+
+def test_multi_drafts_are_well_formed():
+    items = load_golden(MULTI_DRAFTS)
+
+    assert len(items) == 15
+    assert len({item.id for item in items}) == len(items)
+    assert {item.origin for item in items} == {"multi"}
+    assert all(len(item.relevant_sources) >= 2 for item in items)
+
+
+def test_multi_draft_sources_exist_in_corpus():
+    if not CORPUS.is_dir():
+        pytest.skip("data/k8s-docs not checked out")
+    items = load_golden(MULTI_DRAFTS)
+
+    missing = {
+        item.id: [s for s in item.relevant_sources if not (CORPUS / s).is_file()] for item in items
+    }
+
+    assert {k: v for k, v in missing.items() if v} == {}
