@@ -26,7 +26,7 @@ function useFloat(anchor: HTMLElement | null, on: boolean, alignRight: boolean) 
 
 export function CitePopover({ S, onEnter, onLeave }: { S: Store; onEnter: () => void; onLeave: () => void }) {
   const p = S.pop;
-  const c = p && S.col?.chunks.find((x) => x.id === p.id);
+  const c = p ? S.chunks.get(p.id) : undefined;
   const ref = useFloat(p?.anchor || null, !!c, false);
   const r = c && S.q?.R.rerank.find((x) => x.c.id === c.id);
   const url = c && /^https?:/.test(c.url) ? c.url : null;
@@ -53,23 +53,19 @@ export function CitePopover({ S, onEnter, onLeave }: { S: Store; onEnter: () => 
 
 type MenuProps = { S: Store; anchor: HTMLElement | null };
 
-export function CollMenu({ S, anchor, onK8s, onFile, onPick }: MenuProps & { onK8s: () => void; onFile: () => void; onPick: () => void }) {
+export function CollMenu({ S, anchor, onClose }: MenuProps & { onClose: () => void }) {
   const on = S.menu === "coll";
   const ref = useFloat(anchor, on, false);
   useLayoutEffect(() => { if (on) ref.current?.querySelector<HTMLElement>(".mi")?.focus(); }, [on, ref]);
-  const It = ({ t, checked, run, k }: { t: string; checked: boolean; run: () => void; k?: string }) => (
-    <button className="mi" type="button" role="menuitemradio" aria-checked={checked} onClick={run}>
-      <span className="ck">{checked ? "✓" : ""}</span><span className="od-fill">{t}</span>{k && <kbd>{k}</kbd>}
-    </button>
-  );
   return (
     <div className={cx("menu", on && "on")} ref={ref} role="menu" aria-label="Collections" aria-hidden={!on}>
       {on && (
         <>
           <div className="mh lbl">Collections</div>
-          <It t="Kubernetes docs" checked={S.col?.id === "k8s"} run={onK8s} k="K" />
-          {S.upl && <It t={S.upl.name} checked={S.col === S.upl} run={onFile} />}
-          <It t="Upload Markdown file…" checked={false} run={onPick} k="U" />
+          <button className="mi" type="button" role="menuitemradio" aria-checked={!!S.col} onClick={onClose}>
+            <span className="ck">{S.col ? "✓" : ""}</span><span className="od-fill">Kubernetes docs</span>
+          </button>
+          <div className="mh lbl">Your own files: coming soon</div>
         </>
       )}
     </div>
@@ -82,7 +78,7 @@ export function SettingsMenu({ S, anchor, onChange }: MenuProps & { onChange: ()
   useLayoutEffect(() => { if (on) ref.current?.querySelector<HTMLElement>(".stepper button")?.focus(); }, [on, ref]);
   const set = S.set;
   const step = (d: number) => { set.k = Math.max(3, Math.min(10, set.k + d)); onChange(); };
-  const Sw = ({ k, label, hint }: { k: "rerank" | "one" | "inject"; label: string; hint: string }) => (
+  const Sw = ({ k, label, hint }: { k: "rerank" | "one"; label: string; hint: string }) => (
     <div className="od-row setrow">
       <div className="od-field od-fill"><span className="sl">{label}</span><span className="sh">{hint}</span></div>
       <button className="switch od-fixed" type="button" role="switch" aria-checked={set[k]} aria-label={label} onClick={() => { set[k] = !set[k]; onChange(); }}><i /></button>
@@ -101,7 +97,6 @@ export function SettingsMenu({ S, anchor, onChange }: MenuProps & { onChange: ()
       </div>
       <Sw k="rerank" label="Rerank" hint="Cross-encoder reorders fused passages · R" />
       <Sw k="one" label="Max 1 chunk per page" hint="Drop repeat chunks from the same page" />
-      <Sw k="inject" label="Inject LLM rate limit" hint="Next answer fails once with a 429" />
     </div>
   );
 }

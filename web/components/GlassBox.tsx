@@ -1,26 +1,26 @@
 "use client";
 import { useEffect, useReducer, useRef } from "react";
-import { K8S_COL, outlineFrom } from "@/lib/corpus.ts";
-import { compose, parseMd, retrieve } from "@/lib/mockEngine.ts";
-import type { Collection, StageState } from "@/lib/types.ts";
+import { type ApiHit, ApiError, askStream, getCollection, type SSE, splitCitations, toChunk } from "@/lib/api.ts";
+import type { Retrieval, Scored, StageState } from "@/lib/types.ts";
 import { Icon } from "./Icons";
 import { type Cmd, CitePopover, CollMenu, Palette, paletteItems, SettingsMenu } from "./Overlays";
 import { type Actions, AskPanel, PipelinePanel, RunStats, SourcePanel } from "./Panels";
-import { freshIng, type IngKey, type Msg, newStore, type QKey, type Store } from "./store";
+import { freshIng, type Msg, newStore, type QKey, type Store } from "./store";
 
 type Ans = Extract<Msg, { role: "a" }>;
+
+const UNAVAILABLE = "Service unavailable, try again later.";
 
 export default function GlassBox() {
   const sRef = useRef<Store>(null as unknown as Store);
   if (!sRef.current) sRef.current = newStore();
   const S = sRef.current;
   const [, render] = useReducer((x: number) => x + 1, 0);
-  const ids = useRef({ ing: 0, run: 0 });
-  const refs = { file: useRef<HTMLInputElement>(null), coll: useRef<HTMLButtonElement>(null), set: useRef<HTMLButtonElement>(null), theme: useRef<HTMLButtonElement>(null), chat: useRef<HTMLDivElement>(null), input: useRef<HTMLTextAreaElement>(null) };
+  const runId = useRef(0);
+  const refs = { coll: useRef<HTMLButtonElement>(null), set: useRef<HTMLButtonElement>(null), theme: useRef<HTMLButtonElement>(null), chat: useRef<HTMLDivElement>(null), input: useRef<HTMLTextAreaElement>(null) };
   const popHide = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const RM = () => typeof window !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const wait = (ms: number) => (S.fast ? Promise.resolve() : new Promise<void>((r) => setTimeout(r, RM() ? Math.min(ms, 80) : ms)));
   const announce = (t: string) => { S.sr = t; };
 
   /* ---------- overlays ---------- */
@@ -41,98 +41,30 @@ export default function GlassBox() {
   };
   const toggleRerank = () => { S.set.rerank = !S.set.rerank; announce("Rerank " + (S.set.rerank ? "on" : "off")); render(); };
 
-  /* ---------- collections + ingest ---------- */
-  const resetRun = () => { ids.current.run++; S.busy = false; S.q = null; S.msgs = []; S.stats = null; S.chunkOpen = false; };
-  const setCollection = (col: Collection, hold = false) => { resetRun(); S.col = col; S.srcError = null; return ingest(col, hold); };
-  const useK8s = () => { closeAll(); return setCollection(K8S_COL); };
-  const useFile = () => { closeAll(); if (S.upl) return setCollection(S.upl); };
-  const pickFile = () => { closeAll(); render(); refs.file.current?.click(); };
-  const removeFile = () => {
-    const was = S.col === S.upl;
-    S.upl = null;
-    if (was) { ids.current.ing++; resetRun(); S.col = null; S.phase = "empty"; S.ing = null; }
-    S.srcError = null;
-    render();
-  };
-
-  async function ingest(col: Collection, hold: boolean) {
-    const my = ++ids.current.ing;
+  /* ---------- collection: the Kubernetes index, built ahead of time ---------- */
+  async function loadCollection() {
     S.phase = "ingesting";
     S.ing = freshIng();
-    const k8 = col.id === "k8s", n = col.chunks.length, len = col.chunks.reduce((a, c) => a + c.chars, 0);
-    const heads = k8 ? 1652 : col.heads || 0;
-    const plan: Record<IngKey, { w: number; ms: number; key: string }> = k8 ? {
-      parse: { w: 450, ms: 1184, key: "1,652 docs" }, chunk: { w: 550, ms: 2310, key: "17,730 chunks" },
-      embed: { w: 1500, ms: 48902, key: "384-dim vectors" }, index: { w: 550, ms: 6418, key: "indexed in pgvector + full-text" },
-    } : {
-      parse: { w: 420, ms: Math.round(6 + len / 1800), key: heads + (heads === 1 ? " heading" : " headings") }, chunk: { w: 520, ms: 12 + n * 3, key: n + (n === 1 ? " chunk" : " chunks") },
-      embed: { w: Math.min(1800, 700 + n * 25), ms: 90 + n * 38, key: "384-dim vectors" }, index: { w: 480, ms: 24 + n * 5, key: "indexed in pgvector + full-text" },
-    };
     render();
-    for (const key of ["parse", "chunk", "embed", "index"] as IngKey[]) {
-      const p = plan[key];
-      S.ing[key] = { st: "running", t0: performance.now(), frac: 0 };
-      S.fresh = key;
-      announce(`${key} running`);
-      render();
-      if (key === "embed") {
-        await runEmbed(p.w, my, hold);
-        if (my !== ids.current.ing || hold) return;
-      } else {
-        await wait(p.w);
-        if (my !== ids.current.ing) return;
-      }
-      S.ing[key] = { st: "done", ms: p.ms, key: p.key };
-      S.fresh = key;
-      render();
-    }
-    S.phase = "ready";
-    announce("Index ready. You can ask a question.");
-    render();
-  }
-
-  function runEmbed(w: number, my: number, hold: boolean) {
-    return new Promise<void>((res) => {
-      const t0 = performance.now(), dur = S.fast ? 0 : RM() ? 80 : w;
-      const step = () => {
-        if (my !== ids.current.ing || !S.ing) return res();
-        const f = dur ? Math.min(1, (performance.now() - t0) / dur) : 1;
-        S.ing.embed.frac = hold ? f * 0.62 : f;
-        render();
-        if (f >= 1) return res();
-        setTimeout(step, 60);
+    try {
+      const info = await getCollection();
+      S.info = info;
+      S.apiDown = false;
+      S.col = { id: "k8s", name: info.name, chunks: [], outline: [], total: info.chunks, docs: info.docs };
+      S.ing = {
+        parse: { st: "done", key: `${info.docs.toLocaleString("en-US")} docs` },
+        chunk: { st: "done", key: `${info.chunks.toLocaleString("en-US")} chunks` },
+        embed: { st: "done", key: "384-dim vectors" },
+        index: { st: "done", key: "indexed in pgvector + full-text" },
       };
-      step();
-    });
-  }
-
-  async function handleFile(f: File) {
-    closeAll();
-    S.srcError = null;
-    const bad = !/\.(md|markdown)$/i.test(f.name) ? `${f.name} is not Markdown. Upload a .md or .markdown file.` : f.size > 2097152 ? `${f.name} is larger than 2 MB.` : f.size === 0 ? `${f.name} is empty.` : null;
-    if (bad) {
-      S.srcError = bad;
-      if (!S.col) { S.phase = "empty"; S.ing = freshIng(); S.ing.parse = { st: "error", key: f.name.length > 22 ? "Not a Markdown file" : "Not Markdown" }; }
-      announce(bad);
-      render();
-      return;
+      S.phase = "ready";
+      announce("Kubernetes docs loaded. You can ask a question.");
+    } catch {
+      S.apiDown = true;
+      S.phase = "empty";
+      S.ing = null;
     }
-    const my = ++ids.current.ing;
-    resetRun();
-    S.col = null;
-    S.phase = "uploading";
-    S.up = { name: f.name, size: f.size, p: 0 };
-    S.ing = null;
     render();
-    for (let i = 1; i <= 4; i++) { await wait(110); if (my !== ids.current.ing) return; S.up.p = i / 4; render(); }
-    const text = await f.text();
-    if (my !== ids.current.ing) return;
-    const { chunks, heads } = parseMd(f.name, text);
-    if (!chunks.length) { S.phase = "empty"; S.srcError = `${f.name} has no readable text.`; S.ing = freshIng(); S.ing.parse = { st: "error", key: "Nothing to parse" }; render(); return; }
-    const col: Collection = { id: "upload", name: f.name, size: f.size, chunks, heads, outline: outlineFrom(chunks), total: chunks.length, docs: 1 };
-    S.upl = col;
-    S.col = col;
-    ingest(col, false);
   }
 
   /* ---------- ask ---------- */
@@ -143,65 +75,104 @@ export default function GlassBox() {
   };
 
   async function ask(text: string) {
-    if (S.phase !== "ready" || S.busy || !text || !S.col) return;
+    if (S.phase !== "ready" || S.busy || !text) return;
     S.busy = true;
     closeAll();
-    const my = ++ids.current.run, R = retrieve(S.col, S.set, text);
+    const my = ++runId.current;
+    const live = () => my === runId.current;
     S.msgs.push({ role: "u", text });
     const m: Ans = { role: "a", status: "streaming", parts: [], cites: [] };
     S.msgs.push(m);
-    S.q = { text, R, seen: new Set(), tok: 0, st: { dense: { st: "running" }, keyword: { st: "running" }, fusion: { st: "waiting" }, rerank: { st: "waiting" }, generate: { st: "waiting" }, cite: { st: "waiting" } } };
+    const R: Retrieval = { dense: [], kw: [], fusion: [], rerank: [], ctx: [], k: S.set.k };
+    S.chunks = new Map();
+    S.q = { text, R, seen: new Set(), tok: 0, st: { dense: { st: "running" }, keyword: { st: "running" }, fusion: { st: "waiting" }, rerank: { st: S.set.rerank ? "waiting" : "skipped" }, generate: { st: "waiting" }, cite: { st: "waiting" } } };
     S.stats = null;
     render();
     requestAnimationFrame(() => {
       const pipe = document.getElementById("pipe"), qry = document.getElementById("qry");
-      if (pipe && qry) pipe.scrollTo({ top: qry.offsetTop - 16, behavior: RM() || S.fast ? "auto" : "smooth" });
+      if (pipe && qry) pipe.scrollTo({ top: qry.offsetTop - 16, behavior: RM() ? "auto" : "smooth" });
     });
-    const live = () => my === ids.current.run;
-    await wait(240); if (!live()) return; setQ("keyword", "done", R.ms.kw);
-    await wait(140); if (!live()) return; setQ("dense", "done", R.ms.dn);
-    setQ("fusion", "running"); await wait(220); if (!live()) return; setQ("fusion", "done", R.ms.fu);
-    let rr = 0;
-    if (S.set.rerank) { setQ("rerank", "running"); await wait(520); if (!live()) return; rr = R.ms.rr; setQ("rerank", "done", rr); }
-    else setQ("rerank", "skipped");
-    const retrieveMs = Math.max(R.ms.dn, R.ms.kw) + R.ms.fu;
-    const fin = (gen: number, tin: number, tout: number) => {
-      S.stats = { total: retrieveMs + rr + gen + (R.refused ? 0 : R.ms.ci), retrieve: retrieveMs, rerank: rr, gen, tin, tout };
-      m.ms = S.stats.total;
-    };
-    if (R.refused) {
-      setQ("generate", "skipped"); setQ("cite", "skipped");
-      m.status = "refusal"; m.best = R.best; fin(0, 0, 0);
-    } else if (S.set.inject) {
-      S.set.inject = false;
-      setQ("generate", "error");
-      m.status = "error"; m.retryAt = Date.now() + 30000;
-    } else {
-      await wait(260); if (!live()) return;
-      const { parts, cites } = compose(R.qt, R.ctx);
-      const tin = 160 + Math.round(R.ctx.reduce((a, c) => a + c.chars, 0) / 4);
-      setQ("generate", "running");
-      let tok = 0;
-      for (const p of parts) {
-        if (p.t === "c") { m.parts.push(p); render(); await wait(70); if (!live()) return; continue; }
-        const cur = { t: "t" as const, v: "" };
-        m.parts.push(cur);
-        for (const w of p.v.match(/\s+|`[^`]*`\S*|\S+/g) || []) {
-          cur.v += w;
-          if (/\S/.test(w)) { tok++; await wait(26); if (!live()) return; S.q.tok = tok; render(); }
+
+    const ms: Record<string, number> = {};
+    const remember = (hits: ApiHit[]): Scored[] => hits.map((h) => {
+      const c = toChunk(h);
+      S.chunks.set(c.id, c);
+      return { c, s: h.score };
+    });
+    const pos = (arr: Scored[], id: string) => { const i = arr.findIndex((x) => x.c.id === id); return i < 0 ? null : i + 1; };
+
+    const onEvent = ({ event, data }: SSE) => {
+      if (!live()) return;
+      const q = S.q!;
+      if (event === "stage") {
+        ms[data.name] = data.ms;
+        const list = remember(data.hits);
+        if (data.name === "dense") { R.dense = list; setQ("dense", "done", data.ms); }
+        else if (data.name === "keyword") { R.kw = list; setQ("keyword", "done", data.ms); setQ("fusion", "running"); }
+        else if (data.name === "fusion") {
+          R.fusion = list.map((x, i) => ({ c: x.c, d: pos(R.dense, x.c.id), k: pos(R.kw, x.c.id), rrf: x.s, rank: i + 1, s: x.s, tag: "" }));
+          setQ("fusion", "done", data.ms);
+          if (S.set.rerank) setQ("rerank", "running");
+        } else if (data.name === "rerank") {
+          // Cross-encoder scores are logits; the sigmoid maps them to 0–1 bars.
+          R.rerank = list.map((x, i) => ({ c: x.c, s: 1 / (1 + Math.exp(-x.s)), from: R.fusion.find((f) => f.c.id === x.c.id)?.rank ?? i + 1, to: i + 1, tag: "" }));
+          setQ("rerank", "done", data.ms);
         }
+      } else if (event === "context") {
+        R.ctx = remember(data.hits).map((x) => x.c);
+        const ctxIds = new Set(R.ctx.map((c) => c.id));
+        const ctxPages = new Set(R.ctx.map((c) => c.page));
+        R.rerank.forEach((r) => { r.tag = ctxIds.has(r.c.id) ? "ctx" : S.set.one && ctxPages.has(r.c.page) ? "drop" : ""; });
+        R.fusion.forEach((f) => { f.tag = ctxIds.has(f.c.id) ? "ctx" : ""; });
+        if (R.ctx.length) setQ("generate", "running");
+      } else if (event === "token") {
+        const last = m.parts[m.parts.length - 1];
+        if (last && last.t === "t") last.v += data.text;
+        else m.parts.push({ t: "t", v: data.text });
+        q.tok++;
+        render();
+      } else if (event === "done") {
+        m.parts = splitCitations(data.text, data.sources);
+        m.cites = data.sources.map((s: { n: number; id: number }) => ({ n: s.n, id: String(s.id) }));
+        m.status = data.refused ? "refusal" : "done";
+        m.ms = data.ms;
+        q.tout = q.tok;
+        const retrieve = (ms.dense || 0) + (ms.keyword || 0) + (ms.fusion || 0);
+        const rerank = ms.rerank || 0;
+        S.stats = { total: data.ms, retrieve, rerank, gen: Math.max(0, data.ms - retrieve - rerank), tin: 0, tout: q.tok };
+        setQ("generate", q.tok ? "done" : "skipped", q.tok ? S.stats.gen : undefined);
+        setQ("cite", data.refused ? "skipped" : "done");
+      } else if (event === "error") {
+        m.status = "error";
+        m.message = data.message;
+        setQ("generate", "error");
       }
-      const words = parts.filter((p) => p.t === "t").reduce((a, p) => a + (p.t === "t" ? p.v.split(/\s+/).length : 0), 0);
-      const tout = Math.round(words * 1.35), gen = 600 + words * 22;
-      m.cites = cites; S.q.tin = tin; S.q.tout = tout;
-      setQ("generate", "done", gen);
-      setQ("cite", "running"); await wait(160); if (!live()) return;
-      m.status = "done"; fin(gen, tin, tout);
-      setQ("cite", "done", R.ms.ci);
+    };
+
+    try {
+      await askStream({ question: text, k: S.set.k, rerank: S.set.rerank, max_one_per_page: S.set.one }, onEvent);
+      if (live() && m.status === "streaming") { m.status = "error"; m.message = UNAVAILABLE; }
+    } catch (e) {
+      if (!live()) return;
+      m.status = "error";
+      if (e instanceof ApiError && e.status === 429) {
+        m.retryAt = Date.now() + (e.retryAfter || 60) * 1000;
+        m.message = "Too many questions in a minute.";
+      } else if (e instanceof ApiError && e.code === "busy") {
+        m.message = "Two answers are already running. Retry in a few seconds.";
+      } else if (e instanceof ApiError && e.status === 422) {
+        m.message = "Questions must be 1 to 500 characters.";
+      } else {
+        m.message = UNAVAILABLE;
+      }
+      (Object.keys(S.q!.st) as QKey[]).forEach((k) => { if (S.q!.st[k].st === "running" || S.q!.st[k].st === "waiting") S.q!.st[k] = { st: "error" }; });
+    } finally {
+      if (live()) {
+        S.busy = false;
+        announce(m.status === "done" ? "Answer ready with citations." : m.status === "refusal" ? "The model declined: no passage answers this." : m.message || "");
+        render();
+      }
     }
-    S.busy = false;
-    announce(m.status === "done" ? "Answer ready with citations." : m.status === "refusal" ? "Refused: no passage supported an answer." : "LLM rate limited.");
-    render();
   }
 
   const retry = () => {
@@ -215,7 +186,7 @@ export default function GlassBox() {
   const showPop = (el: HTMLElement, pinned: boolean) => {
     clearTimeout(popHide.current);
     const id = el.dataset.chunk;
-    if (!id || !S.col?.chunks.some((c) => c.id === id)) return;
+    if (!id || !S.chunks.has(id)) return;
     S.pop = { id, n: el.dataset.n || "", anchor: el, pinned };
     if (pinned) S.hl = id;
     render();
@@ -230,20 +201,12 @@ export default function GlassBox() {
   };
 
   const A: Actions = {
-    pickFile, useK8s, useFile, removeFile, ask, retry, pin,
+    ask, retry, pin,
+    reload: loadCollection,
     toggleChunks: () => { S.chunkOpen = !S.chunkOpen; render(); },
-    outline: (id) => {
-      if (S.ing?.chunk.st === "done") S.chunkOpen = true;
-      S.hl = id;
-      render();
-      requestAnimationFrame(() => document.querySelector(`#strip .chunk[data-chunk="${id}"]`)?.scrollIntoView({ block: "nearest", inline: "center", behavior: RM() ? "auto" : "smooth" }));
-    },
   };
 
   const cmds: Cmd[] = [
-    { t: "Upload Markdown file", k: "U", run: () => refs.file.current?.click() },
-    { t: "Switch collection: Kubernetes docs", k: "K", run: useK8s },
-    ...(S.upl ? [{ t: "Switch collection: " + S.upl.name, run: useFile }] : []),
     { t: "Toggle rerank", s: S.set.rerank ? "on" : "off", k: "R", run: toggleRerank },
     { t: "Toggle max 1 chunk per page", s: S.set.one ? "on" : "off", run: () => { S.set.one = !S.set.one; render(); } },
     { t: "Ask a question", k: "/", run: () => refs.input.current?.focus() },
@@ -253,8 +216,8 @@ export default function GlassBox() {
   const runCmd = (c: Cmd) => { S.pal.open = false; render(); c.run(); };
 
   // Latest closures for the long-lived listeners below.
-  const live = useRef({ S, cmds, runCmd, openPal, closePal, closeAll, toggleTheme, toggleRerank, useK8s, handleFile, showPop, hideSoon, render, setCollection, ask, refs });
-  live.current = { S, cmds, runCmd, openPal, closePal, closeAll, toggleTheme, toggleRerank, useK8s, handleFile, showPop, hideSoon, render, setCollection, ask, refs };
+  const live = useRef({ S, cmds, runCmd, openPal, closePal, closeAll, toggleTheme, toggleRerank, showPop, hideSoon, render, refs, loadCollection });
+  live.current = { S, cmds, runCmd, openPal, closePal, closeAll, toggleTheme, toggleRerank, showPop, hideSoon, render, refs, loadCollection };
 
   /* ---------- effects ---------- */
   useEffect(() => {
@@ -262,7 +225,7 @@ export default function GlassBox() {
     S.theme = document.documentElement.dataset.theme === "light" ? "light" : "dark";
 
     const onKey = (e: KeyboardEvent) => {
-      const { S, cmds, runCmd, openPal, closePal, closeAll, toggleTheme, toggleRerank, useK8s, render, refs } = L();
+      const { S, cmds, runCmd, openPal, closePal, closeAll, toggleTheme, toggleRerank, render, refs } = L();
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); S.pal.open ? closePal() : openPal(); return; }
       if (e.key === "Escape") { const was = S.pal.open || S.menu || S.pop?.pinned; closeAll(); render(); if (was) refs.theme.current?.focus(); return; }
       if (S.pal.open) {
@@ -276,9 +239,7 @@ export default function GlassBox() {
       const tg = e.target as HTMLElement;
       if (tg.matches?.("input,textarea,[contenteditable]") || e.metaKey || e.ctrlKey || e.altKey) return;
       const k = e.key.toLowerCase();
-      if (k === "u") { e.preventDefault(); refs.file.current?.click(); }
-      else if (k === "k") { e.preventDefault(); useK8s(); }
-      else if (k === "r") toggleRerank();
+      if (k === "r") toggleRerank();
       else if (k === "t") toggleTheme();
       else if (k === ",") { e.preventDefault(); closeAll(); S.menu = "settings"; render(); }
       else if (k === "/") { e.preventDefault(); refs.input.current?.focus(); }
@@ -314,26 +275,11 @@ export default function GlassBox() {
       if (t.closest("button,a,input,textarea,#pop,.menu,.scrim")) return;
       if (S.menu || S.pop?.pinned) { S.menu = null; if (S.pop?.pinned) { S.pop = null; S.hl = null; } render(); }
     };
-    const onDragOver = (e: DragEvent) => { e.preventDefault(); const { S, render } = L(); if (!S.dragOver) { S.dragOver = true; render(); } };
-    const onDragLeave = () => { const { S, render } = L(); S.dragOver = false; render(); };
-    const onDrop = (e: DragEvent) => { e.preventDefault(); const { S, handleFile, render } = L(); S.dragOver = false; render(); const f = e.dataTransfer?.files[0]; if (f) handleFile(f); };
-    // Boot: #empty (default), #ingesting, #answer
-    const boot = () => {
-      const { S, closeAll, setCollection, ask, render } = L();
-      closeAll(); ids.current.ing++; ids.current.run++;
-      Object.assign(S, { col: null, phase: "empty", ing: null, srcError: null, q: null, msgs: [], stats: null, busy: false, chunkOpen: false });
-      const h = location.hash.slice(1);
-      if (h === "ingesting") setCollection(K8S_COL, true);
-      else if (h === "answer") { S.fast = true; setCollection(K8S_COL).then(() => ask("How do I roll back a failed Deployment?")).then(() => { S.fast = false; }); }
-      else render();
-    };
-    // Live stage timers and rate-limit countdown.
+    // Rate-limit countdown.
     const tick = setInterval(() => {
       const { S, render } = L();
-      const running = S.ing && Object.values(S.ing).some((o) => o.st === "running");
-      const counting = S.msgs.some((m) => m.role === "a" && m.status === "error" && (m.retryAt || 0) > Date.now() - 1000);
-      if (running || counting) render();
-    }, 80);
+      if (S.msgs.some((m) => m.role === "a" && m.status === "error" && (m.retryAt || 0) > Date.now() - 1000)) render();
+    }, 1000);
 
     addEventListener("keydown", onKey);
     document.addEventListener("pointerover", onOver);
@@ -341,11 +287,7 @@ export default function GlassBox() {
     document.addEventListener("focusin", onFocusIn);
     document.addEventListener("focusout", onFocusOut);
     document.addEventListener("click", onClick);
-    addEventListener("dragover", onDragOver);
-    addEventListener("dragleave", onDragLeave);
-    addEventListener("drop", onDrop);
-    addEventListener("hashchange", boot);
-    boot();
+    L().loadCollection();
     return () => {
       clearInterval(tick);
       removeEventListener("keydown", onKey);
@@ -354,11 +296,7 @@ export default function GlassBox() {
       document.removeEventListener("focusin", onFocusIn);
       document.removeEventListener("focusout", onFocusOut);
       document.removeEventListener("click", onClick);
-      removeEventListener("dragover", onDragOver);
-      removeEventListener("dragleave", onDragLeave);
-      removeEventListener("drop", onDrop);
-      removeEventListener("hashchange", boot);
-      ids.current.ing++; ids.current.run++;
+      runId.current++;
     };
   }, [S]);
 
@@ -400,10 +338,9 @@ export default function GlassBox() {
         <RunStats S={S} />
       </div>
       <CitePopover S={S} onEnter={() => clearTimeout(popHide.current)} onLeave={hideSoon} />
-      <CollMenu S={S} anchor={refs.coll.current} onK8s={useK8s} onFile={useFile} onPick={pickFile} />
+      <CollMenu S={S} anchor={refs.coll.current} onClose={() => { S.menu = null; render(); }} />
       <SettingsMenu S={S} anchor={refs.set.current} onChange={render} />
       <Palette S={S} cmds={cmds} onQuery={(q) => { S.pal.query = q; S.pal.sel = 0; render(); }} onRun={runCmd} onClose={closePal} />
-      <input type="file" ref={refs.file} accept=".md,.markdown,text/markdown" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) handleFile(f); }} />
       <div className="sr" aria-live="polite">{S.sr}</div>
     </>
   );

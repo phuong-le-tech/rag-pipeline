@@ -1,17 +1,14 @@
 "use client";
 import type { ReactNode } from "react";
-import { label, THRESH } from "@/lib/mockEngine.ts";
 import type { Chunk, StageState } from "@/lib/types.ts";
 import { Icon, Md } from "./Icons";
-import { cx, fmtMs, fmtSize, type IngKey, type Msg, MODEL, type QKey, type Store, STL } from "./store";
+import { cx, fmtMs, type IngKey, type Msg, type QKey, type Store, STL } from "./store";
+
+const label = (c: Chunk) => c.path.slice(-2).join(" › ");
 
 export type Actions = {
-  pickFile: () => void;
-  useK8s: () => void;
-  useFile: () => void;
-  removeFile: () => void;
+  reload: () => void;
   toggleChunks: () => void;
-  outline: (id: string) => void;
   ask: (text: string) => void;
   retry: () => void;
   pin: (el: HTMLElement) => void;
@@ -21,68 +18,22 @@ type P = { S: Store; A: Actions; h: (id: string) => string };
 const Stt = ({ st }: { st: StageState }) => (<span className="stt"><i className="dot" />{STL[st]}</span>);
 
 /* ---------- 01 Source ---------- */
-export function SourcePanel({ S, A, h }: P) {
-  const u = S.upl, act = S.col;
-  let top: ReactNode;
-  if (S.phase === "uploading" && S.up) {
-    top = (
-      <div className="drop busy" role="status">
-        <span className="dz-t">Reading {S.up.name}</span>
-        <span className="dz-s mono">{fmtSize(S.up.size)}</span>
-        <div className="bar" style={{ width: "100%", marginTop: 8 }}><i style={{ "--v": S.up.p } as React.CSSProperties} /></div>
-      </div>
-    );
-  } else if (u) {
-    top = (
-      <div className="filechip" data-on={act === u ? 1 : 0}>
-        <button className="fc-main" type="button" onClick={A.useFile} aria-label={`Use ${u.name}`}>
-          <Icon name="file" />
-          <span className="od-fill od-stack" style={{ "--od-gap": 0 } as React.CSSProperties}>
-            <span className="nm od-truncate">{u.name}</span>
-            <span className="sz mono">{fmtSize(u.size || 0)} · {u.chunks.length} chunks</span>
-          </span>
-        </button>
-        <button className="icon-btn" type="button" onClick={A.removeFile} aria-label={`Remove ${u.name}`}><Icon name="x" /></button>
-      </div>
-    );
-  } else {
-    top = (
-      <button className={cx("drop", S.dragOver && "over")} type="button" onClick={A.pickFile} id="dz">
-        <span className="dz-t">Drop a Markdown file</span>
-        <span className="dz-s">or browse · .md up to 2 MB</span>
-        <kbd aria-label="Shortcut U">U</kbd>
-      </button>
-    );
-  }
-  const parsed = act && S.ing?.parse.st === "done";
+export function SourcePanel({ S, A }: P) {
   return (
     <section className="panel" id="p-src" aria-labelledby="h-src">
       <div className="ph"><span className="num">01</span><h2 id="h-src">Source</h2></div>
       <div className="pb src-b" id="src">
-        <div>
-          {top}
-          {S.srcError && (
-            <div style={{ marginTop: 8 }}><div className="errnote" role="alert"><Icon name="alert" /><span>{S.srcError}</span></div></div>
-          )}
+        <div className="drop busy" role="note">
+          <span className="dz-t">Uploads are coming soon</span>
+          <span className="dz-s">This demo answers from the Kubernetes documentation.</span>
         </div>
         <div className="od-stack" style={{ "--od-gap": "12px" } as React.CSSProperties}>
-          <div className="or">or</div>
-          <button className="collbtn" type="button" onClick={A.useK8s} aria-pressed={act?.id === "k8s"}>
-            <span className="t">Use the Kubernetes docs</span><span className="s mono">1,652 docs · 17,730 chunks</span>
+          <div className="or">collection</div>
+          <button className="collbtn" type="button" onClick={A.reload} aria-pressed={S.col?.id === "k8s"}>
+            <span className="t">Kubernetes docs</span>
+            <span className="s mono">{S.col ? `${S.col.docs.toLocaleString("en-US")} docs · ${S.col.total.toLocaleString("en-US")} chunks` : S.apiDown ? "API unreachable · retry" : "loading…"}</span>
           </button>
         </div>
-        {parsed && (
-          <div className="outline-col">
-            <div className="lbl">Outline</div>
-            <nav className="outline" aria-label="Document outline">
-              {act.outline.map((o, i) => (
-                <button key={i} className={cx("ol", h(o.id))} type="button" onClick={() => A.outline(o.id)} data-chunk={o.id} data-d={o.d} style={{ "--d": o.d } as React.CSSProperties}>
-                  <span className="od-truncate">{o.label}</span>
-                </button>
-              ))}
-            </nav>
-          </div>
-        )}
       </div>
     </section>
   );
@@ -110,7 +61,7 @@ function IngCard({ S, A, i, k, name }: P & { i: number; k: IngKey; name: string 
           <div className="cnt mono">{Math.round((o.frac || 0) * total).toLocaleString("en-US")} / {total.toLocaleString("en-US")}</div>
         </>
       )}
-      {isChunk && st === "done" && <div className="reveal">{S.chunkOpen ? "Hide" : "Show"} chunks <Icon name="chev" /></div>}
+      {isChunk && st === "done" && (S.col?.chunks.length || 0) > 0 && <div className="reveal">{S.chunkOpen ? "Hide" : "Show"} chunks <Icon name="chev" /></div>}
     </>
   );
   const cls = cx("stage", S.fresh === k && "fresh");
@@ -125,7 +76,7 @@ function Explain() {
   return (
     <div className="explain">
       <h1>See every step between a file and an answer.</h1>
-      <div className="zr"><span className="n">01</span><div><b>Source</b><span className="d">Drop a Markdown file or load the Kubernetes docs.</span></div></div>
+      <div className="zr"><span className="n">01</span><div><b>Source</b><span className="d">The Kubernetes documentation, indexed ahead of time.</span></div></div>
       <div className="zr"><span className="n">02</span><div><b>Pipeline</b><span className="d">Watch each stage run, with timings, scores and rank changes.</span></div></div>
       <div className="zr"><span className="n">03</span><div><b>Ask</b><span className="d">Every claim cites a passage. Hover a citation to trace it back.</span></div></div>
     </div>
@@ -228,17 +179,17 @@ function QueryFlow({ S, h }: P) {
                     );
                   })}
                 </ol>
-                <p className="formula">relevance 0–1 · passages below {THRESH.toFixed(2)} cannot support an answer</p>
+                <p className="formula">cross-encoder relevance (sigmoid of the logit) · higher is more relevant</p>
               </>
             ) : <ol className="hits"><Skel /></ol>}
         </section>
         <section className={cls("generate")} data-st={go} aria-label="Generate">
-          <QH n="05" name="Generate" sub={MODEL} k="generate" />
+          <QH n="05" name="Generate" sub={S.info?.llm_model || ""} k="generate" />
           {go === "waiting" ? <p className="note">Waits for the reranked context.</p>
-            : go === "running" ? <><p className="note">Streaming from {MODEL} · <span className="mono">{q.tok}</span> tokens out</p>{chips}</>
-            : go === "done" ? <><p className="note">Answer complete · <span className="mono">{q.tout}</span> tokens out, <span className="mono">{q.tin}</span> in</p>{chips}</>
-            : go === "skipped" ? <p className="note">Not called. No passage supported an answer.</p>
-            : <><p className="note">429 · rate limited by the model gateway. Retrieval results are kept.</p>{chips}</>}
+            : go === "running" ? <><p className="note">Streaming from {S.info?.llm_model || "the model"} · <span className="mono">{q.tok}</span> tokens out</p>{chips}</>
+            : go === "done" ? <><p className="note">Answer complete · <span className="mono">{q.tout}</span> tokens out</p>{chips}</>
+            : go === "skipped" ? <p className="note">Not called: retrieval found no passage.</p>
+            : <><p className="note">No answer this time. Retrieval results are kept.</p>{chips}</>}
         </section>
         <section className={cls("cite")} data-st={st.cite.st} aria-label="Cite">
           <QH n="06" name="Cite" sub="only cited passages are listed as sources" k="cite" />
@@ -262,7 +213,7 @@ function QueryFlow({ S, h }: P) {
 
 export function PipelinePanel(p: P) {
   const { S, A, h } = p;
-  const pstate = S.phase === "ingesting" ? ["busy", "Ingesting"] : S.phase === "uploading" ? ["busy", "Uploading"] : S.busy ? ["busy", "Answering"] : S.phase === "ready" ? ["ready", "Ready"] : ["idle", "Idle"];
+  const pstate = S.phase === "ingesting" ? ["busy", "Connecting"] : S.apiDown ? ["idle", "Offline"] : S.busy ? ["busy", "Answering"] : S.phase === "ready" ? ["ready", "Ready"] : ["idle", "Idle"];
   const c = S.col;
   return (
     <section className="panel hero" id="p-pipe" aria-labelledby="h-pipe">
@@ -273,7 +224,7 @@ export function PipelinePanel(p: P) {
       <div className="pipe-b" id="pipe">
         <div>{S.phase === "empty" && !S.q && <Explain />}</div>
         <div>
-          <div className="sec-h"><h3 className="lbl">Ingest</h3><span className="cap">{c ? (c.id === "k8s" ? "Kubernetes docs · replayed from last build" : c.name) : ""}</span></div>
+          <div className="sec-h"><h3 className="lbl">Ingest</h3><span className="cap">{c ? "Kubernetes docs · indexed ahead of time" : ""}</span></div>
           <div className="ing-grid">{ING.map(([k, name], i) => <IngCard key={k} {...p} i={i} k={k} name={name} />)}</div>
           {S.chunkOpen && S.ing?.chunk.st === "done" && c && (
             <div className="strip-wrap" id="strip">
@@ -297,9 +248,9 @@ export function PipelinePanel(p: P) {
 }
 
 /* ---------- 03 Ask ---------- */
-const cdText = (retryAt: number) => {
-  const s = Math.max(0, Math.ceil((retryAt - Date.now()) / 1000));
-  return s > 0 ? `LLM rate limited — retry in ${s} s` : "LLM rate limited — you can retry now";
+const waitText = (retryAt?: number) => {
+  const s = retryAt ? Math.ceil((retryAt - Date.now()) / 1000) : 0;
+  return s > 0 ? `Retry in ${s} s.` : "";
 };
 
 function Message({ m, S, A, h }: P & { m: Msg }) {
@@ -315,7 +266,7 @@ function Message({ m, S, A, h }: P & { m: Msg }) {
         <div className="refusal" role="status">
           <div className="rl"><Icon name="ban" />Refused</div>
           <p className="rt">I don&apos;t know based on the provided documentation.</p>
-          <p className="rn">No passage supported an answer. Best match scored {(m.best || 0).toFixed(2)}, below the {THRESH.toFixed(2)} threshold.</p>
+          <p className="rn">The model found no passage that answers this question, so it declined instead of guessing.</p>
         </div>
       </article>
     );
@@ -325,9 +276,8 @@ function Message({ m, S, A, h }: P & { m: Msg }) {
       <article className="msg">
         <Hd r={null} />
         <div className="errbox" role="alert">
-          <div className="et"><Icon name="alert" /><span>{cdText(m.retryAt || 0)}</span></div>
-          <p className="en">429 from the model gateway. Retrieval finished and was kept, nothing was lost.</p>
-          <button className="btn" type="button" onClick={A.retry}>Retry</button>
+          <div className="et"><Icon name="alert" /><span>{m.message || "Something went wrong."}</span></div>
+          {waitText(m.retryAt) ? <p className="en">{waitText(m.retryAt)}</p> : <button className="btn" type="button" onClick={A.retry}>Retry</button>}
         </div>
       </article>
     );
@@ -344,7 +294,8 @@ function Message({ m, S, A, h }: P & { m: Msg }) {
         <div className="srcs">
           <div className="lbl">Sources</div>
           {m.cites.map((c) => {
-            const ch = S.col!.chunks.find((x) => x.id === c.id)!;
+            const ch = S.chunks.get(c.id);
+            if (!ch) return null;
             return (
               <button key={c.id} className={cx("src", h(c.id))} type="button" data-chunk={c.id} data-n={c.n} onClick={(e) => A.pin(e.currentTarget)}>
                 <span className="cite">{c.n}</span>
@@ -366,10 +317,7 @@ export function AskPanel({ S, A, h, chatRef, inputRef }: P & { chatRef: React.Re
   let body: ReactNode;
   if (S.msgs.length) body = S.msgs.map((m, i) => <Message key={i} m={m} S={S} A={A} h={h} />);
   else if (ok) {
-    const qs = S.col!.id === "k8s"
-      ? ["How do I roll back a failed Deployment?", "What's the difference between liveness and readiness probes?", "Why was my container OOMKilled?"]
-      : S.col!.chunks.slice(0, 2).map((c) => `What does “${c.path[c.path.length - 1]}” cover?`);
-    qs.push("Who won the 2018 World Cup?");
+    const qs = ["How do I roll back a failed Deployment?", "What's the difference between liveness and readiness probes?", "Why was my container OOMKilled?", "Who won the 2018 World Cup?"];
     body = (
       <div className="empty-ask">
         <h3>Ask about {S.col!.name}</h3>
@@ -378,7 +326,7 @@ export function AskPanel({ S, A, h, chatRef, inputRef }: P & { chatRef: React.Re
       </div>
     );
   } else {
-    const t = S.phase === "ingesting" || S.phase === "uploading" ? ["Indexing in progress", "You can ask as soon as the Index stage finishes."] : ["No source yet", "Add a Markdown file or load the Kubernetes docs on the left to start asking."];
+    const t = S.apiDown ? ["Service unavailable", "The API is not reachable right now. Try again later."] : ["Loading the index", "Connecting to the Kubernetes docs index…"];
     body = <div className="empty-ask"><h3>{t[0]}</h3><p>{t[1]}</p></div>;
   }
   const submit = () => {
@@ -418,9 +366,9 @@ export function RunStats({ S }: { S: Store }) {
       <F l="Retrieve" v={s ? t(s.retrieve) : "—"} />
       <F l="Rerank" v={s ? t(s.rerank) : "—"} />
       <F l="Generate" v={s ? t(s.gen) : "—"} />
-      <F l="Tokens" v={s ? `${s.tin.toLocaleString("en-US")} in / ${s.tout} out` : "—"} />
-      <F l="Model" v={MODEL} />
-      <F l="Embedding" v="bge-small-en-v1.5 · 384-dim" c="right" />
+      <F l="Tokens out" v={s ? String(s.tout) : "—"} />
+      <F l="Model" v={S.info?.llm_model || "—"} />
+      <F l="Embedding" v={S.info ? `${S.info.embedding_model} · 384-dim` : "—"} c="right" />
     </footer>
   );
 }

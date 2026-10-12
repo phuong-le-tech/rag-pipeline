@@ -72,7 +72,8 @@ def events(resp):
 def test_ask_streams_stages_tokens_and_done():
     ev = events(make_client().post("/api/ask", json={"question": "roll back?"}))
     names = [e for e, _ in ev]
-    assert names[:4] == ["stage"] * 4 and "token" in names and names[-1] == "done"
+    assert names[:5] == ["stage"] * 4 + ["context"] and "token" in names and names[-1] == "done"
+    assert ev[4][1]["hits"][0]["id"] == 7
     assert ev[-1][1]["sources"] == [{"n": 1, "id": 7}] and not ev[-1][1]["refused"]
 
 

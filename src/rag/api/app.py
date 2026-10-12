@@ -117,6 +117,8 @@ def run_ask(
         with services.retriever_factory() as retriever:
             hits = tuple(retriever.retrieve(question, config, on_stage=on_stage))
         yield from staged
+        # The passages the LLM will read (after rerank and the per-page cap).
+        yield sse("context", {"hits": [hit_json(h) for h in hits]})
         if hits and not budget.take():
             status = "daily_limit"
             yield sse("error", {"code": "daily_limit", "message": DAILY_LIMIT_MSG})

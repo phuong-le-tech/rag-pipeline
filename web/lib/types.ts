@@ -10,7 +10,7 @@ export type Chunk = {
 export type OutlineItem = { d: number; label: string; id: string };
 
 export type Collection = {
-  id: "k8s" | "upload";
+  id: "k8s";
   name: string;
   chunks: Chunk[];
   outline: OutlineItem[];
@@ -20,23 +20,20 @@ export type Collection = {
   size?: number;
 };
 
-export type Settings = { k: number; rerank: boolean; one: boolean; inject: boolean };
+export type Settings = { k: number; rerank: boolean; one: boolean };
 
 export type Scored = { c: Chunk; s: number };
 export type Fused = { c: Chunk; d: number | null; k: number | null; rrf: number; rank: number; s: number; tag: string };
 export type Reranked = { c: Chunk; s: number; from: number; to: number; tag: "" | "ctx" | "drop" };
 
+// Built incrementally from the API's stage events.
 export type Retrieval = {
-  qt: string[];
   dense: Scored[];
   kw: Scored[];
   fusion: Fused[];
   rerank: Reranked[];
   ctx: Chunk[];
-  best: number;
-  refused: boolean;
   k: number;
-  ms: { dn: number; kw: number; fu: number; rr: number; ci: number };
 };
 
 export type Part = { t: "t"; v: string } | { t: "c"; n: number; id: string };

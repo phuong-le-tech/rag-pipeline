@@ -1,4 +1,5 @@
-import type { Cite, Collection, Part, Retrieval, Settings, StageState } from "@/lib/types.ts";
+import type { CollectionInfo } from "@/lib/api.ts";
+import type { Chunk, Cite, Collection, Part, Retrieval, Settings, StageState } from "@/lib/types.ts";
 
 export type IngKey = "parse" | "chunk" | "embed" | "index";
 export type QKey = "dense" | "keyword" | "fusion" | "rerank" | "generate" | "cite";
@@ -15,16 +16,17 @@ export type QState = {
 };
 export type Msg =
   | { role: "u"; text: string }
-  | { role: "a"; status: "streaming" | "done" | "refusal" | "error"; parts: Part[]; cites: Cite[]; ms?: number; best?: number; retryAt?: number };
+  | { role: "a"; status: "streaming" | "done" | "refusal" | "error"; parts: Part[]; cites: Cite[]; ms?: number; message?: string; retryAt?: number };
 export type Stats = { total: number; retrieve: number; rerank: number; gen: number; tin: number; tout: number };
 export type PopState = { id: string; n: string; anchor: HTMLElement; pinned: boolean } | null;
 
 // Mutable view-model, mirrored from the prototype: actions mutate it, then call render().
 export type Store = {
   col: Collection | null;
-  upl: Collection | null;
-  phase: "empty" | "uploading" | "ingesting" | "ready";
-  up: { name: string; size: number; p: number } | null;
+  info: CollectionInfo | null;
+  apiDown: boolean;
+  chunks: Map<string, Chunk>; // every passage seen in the current query, for citations
+  phase: "empty" | "ingesting" | "ready";
   srcError: string | null;
   ing: Ing | null;
   chunkOpen: boolean;
@@ -40,20 +42,18 @@ export type Store = {
   menu: "coll" | "settings" | null;
   pal: { open: boolean; query: string; sel: number };
   pop: PopState;
-  dragOver: boolean;
   sr: string;
 };
 
 export const newStore = (): Store => ({
-  col: null, upl: null, phase: "empty", up: null, srcError: null, ing: null, chunkOpen: false,
+  col: null, info: null, apiDown: false, chunks: new Map(), phase: "empty", srcError: null, ing: null, chunkOpen: false,
   q: null, msgs: [], busy: false, fast: false, hl: null, fresh: null, stats: null,
-  set: { k: 5, rerank: true, one: false, inject: false },
-  theme: "dark", menu: null, pal: { open: false, query: "", sel: 0 }, pop: null, dragOver: false, sr: "",
+  set: { k: 5, rerank: true, one: true }, // same defaults as `rag ask` and the API
+  theme: "dark", menu: null, pal: { open: false, query: "", sel: 0 }, pop: null, sr: "",
 });
 
 export const freshIng = (): Ing => ({ parse: { st: "waiting" }, chunk: { st: "waiting" }, embed: { st: "waiting" }, index: { st: "waiting" } });
 
-export const MODEL = "nemotron-3-super:free";
 export const STL: Record<StageState, string> = { waiting: "Waiting", running: "Running", done: "Done", error: "Error", skipped: "Skipped" };
 export const fmtMs = (n: number) => Math.round(n).toLocaleString("en-US") + " ms";
 export const fmtSize = (b: number) => (b < 1024 ? b + " B" : b < 1048576 ? (b / 1024).toFixed(1) + " KB" : (b / 1048576).toFixed(1) + " MB");
