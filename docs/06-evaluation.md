@@ -97,7 +97,7 @@ Most golden questions are answered by one page, and one search is enough to find
 the fixed pipeline. `evals/drafts-multi.jsonl` holds 15 drafts that need 2 to 3 pages: 8
 comparisons ("how does X differ from Y") and 7 multi-part how-tos. An agent that searches several
 times should gain here. After review with `rag review-drafts`, the accepted ones go to
-`evals/multi.jsonl` (origin `multi`). They are reported apart from the main 94 + 15 questions, so
+`evals/multi.jsonl` (origin `multi`). They are reported apart from the main set (94 golden + 15 unanswerable questions), so
 the agent-versus-pipeline comparison on the main set is not biased by questions written to suit it.
 
 ## Results v2: 94 questions (2026-10-10, corpus `b2e60d8`, `local:BAAI/bge-small-en-v1.5:384:1500:loader2`, reranker MiniLM-L-6, rewrites by Nemotron 3 Super)
