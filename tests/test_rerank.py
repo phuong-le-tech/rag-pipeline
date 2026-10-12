@@ -69,7 +69,7 @@ class KeywordOnlyRetriever(Retriever):
         super().__init__(conn=None, embedder=FakeEmbedder(8), reranker=reranker)
         self._candidates = candidates
 
-    def _ranked_lists(self, query, config):
+    def _ranked_lists(self, query, config, on_stage=None):
         return [self._candidates[: config.candidates]]
 
 

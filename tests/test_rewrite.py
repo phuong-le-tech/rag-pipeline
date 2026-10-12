@@ -43,7 +43,7 @@ class RecordingRetriever(Retriever):
         super().__init__(conn=None, embedder=FakeEmbedder(8), reranker=reranker, rewriter=rewriter)
         self.searched = []
 
-    def _ranked_lists(self, query, config):
+    def _ranked_lists(self, query, config, on_stage=None):
         self.searched.append(query)
         return [[Hit(1, 1.0, "a.md", "u", "T", "H", "c", False)]]
 

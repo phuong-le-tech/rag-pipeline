@@ -4,6 +4,8 @@ Each config field is a switch the eval harness can flip, so every retrieval choi
 a row in the ablation table.
 """
 
+import time
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from typing import Literal, get_args
 
@@ -16,6 +18,16 @@ from rag.retrieval.rewrite import QueryRewriter
 from rag.retrieval.search import Hit, dense_search, keyword_search
 
 Mode = Literal["dense", "keyword", "hybrid"]
+# Called after each stage with its name, its hits and elapsed milliseconds (the glass-box UI).
+StageHook = Callable[[str, list[Hit], float], None]
+
+
+def _timed(name: str, on_stage: StageHook | None, fn: Callable[[], list[Hit]]) -> list[Hit]:
+    start = time.perf_counter()
+    hits = fn()
+    if on_stage:
+        on_stage(name, hits, (time.perf_counter() - start) * 1000)
+    return hits
 
 
 @dataclass(frozen=True)
@@ -53,28 +65,46 @@ class Retriever:
         self.reranker = reranker
         self.rewriter = rewriter
 
-    def _ranked_lists(self, query: str, config: RetrieverConfig) -> list[list[Hit]]:
+    def _ranked_lists(
+        self, query: str, config: RetrieverConfig, on_stage: StageHook | None
+    ) -> list[list[Hit]]:
         lists = []
         if config.mode in ("dense", "hybrid"):
-            vector = self.embedder.embed_query(query)
-            lists.append(
-                dense_search(self.conn, vector, config.candidates, config.include_generated)
-            )
+
+            def dense() -> list[Hit]:
+                vector = self.embedder.embed_query(query)
+                return dense_search(self.conn, vector, config.candidates, config.include_generated)
+
+            lists.append(_timed("dense", on_stage, dense))
         if config.mode in ("keyword", "hybrid"):
             lists.append(
-                keyword_search(self.conn, query, config.candidates, config.include_generated)
+                _timed(
+                    "keyword",
+                    on_stage,
+                    lambda: keyword_search(
+                        self.conn, query, config.candidates, config.include_generated
+                    ),
+                )
             )
         return lists
 
-    def _first_stage(self, query: str, config: RetrieverConfig, limit: int) -> list[Hit]:
-        lists = self._ranked_lists(query, config)
+    def _first_stage(
+        self, query: str, config: RetrieverConfig, limit: int, on_stage: StageHook | None = None
+    ) -> list[Hit]:
+        lists = self._ranked_lists(query, config, on_stage)
         if config.mode != "hybrid":
             return lists[0][:limit]
         by_id = {hit.chunk_id: hit for hits in lists for hit in hits}
-        fused = rrf([[h.chunk_id for h in hits] for hits in lists], config.rrf_k, limit)
-        return [replace(by_id[chunk_id], score=score) for chunk_id, score in fused]
 
-    def retrieve(self, query: str, config: RetrieverConfig) -> list[Hit]:
+        def fuse() -> list[Hit]:
+            fused = rrf([[h.chunk_id for h in hits] for hits in lists], config.rrf_k, limit)
+            return [replace(by_id[chunk_id], score=score) for chunk_id, score in fused]
+
+        return _timed("fusion", on_stage, fuse)
+
+    def retrieve(
+        self, query: str, config: RetrieverConfig, on_stage: StageHook | None = None
+    ) -> list[Hit]:
         if not query.strip():
             raise ValueError("query must not be blank")
         if config.rerank and self.reranker is None:
@@ -84,7 +114,9 @@ class Retriever:
         search_query = self.rewriter.rewrite(query) if config.rewrite else query
         # Reranking and the per-page cap both need a deeper list than k to choose from.
         deep = config.rerank or config.max_per_source is not None
-        hits = self._first_stage(search_query, config, config.candidates if deep else config.k)
+        limit = config.candidates if deep else config.k
+        hits = self._first_stage(search_query, config, limit, on_stage)
         if config.rerank:
-            hits = self.reranker.rerank(query, hits)
+            first = hits
+            hits = _timed("rerank", on_stage, lambda: self.reranker.rerank(query, first))
         return cap_per_source(hits, lambda h: h.source, config.max_per_source, config.k)

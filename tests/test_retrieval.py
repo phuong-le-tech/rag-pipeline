@@ -119,3 +119,16 @@ def test_retriever_rejects_blank_query():
 def test_config_validation(kwargs):
     with pytest.raises(ValueError):
         RetrieverConfig(**kwargs)
+
+
+@pytest.mark.integration
+def test_retrieve_reports_each_stage(indexed):
+    seen = []
+    hits = Retriever(indexed, EMB).retrieve(
+        "rollback",
+        RetrieverConfig(mode="hybrid", k=2, candidates=4),
+        on_stage=lambda name, stage_hits, ms: seen.append((name, len(stage_hits), ms >= 0)),
+    )
+    assert [s[0] for s in seen] == ["dense", "keyword", "fusion"]
+    assert all(ok for *_, ok in seen)
+    assert len(hits) == 2
