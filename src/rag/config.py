@@ -43,6 +43,13 @@ class Settings(BaseSettings):
     daily_llm_limit: int = Field(default=300, ge=0)
     max_concurrent_asks: int = Field(default=2, gt=0)
 
+    # Agent mode: a separate backend, model and limits so the agent can use a different model.
+    agent_backend: Literal["anthropic", "openrouter", "fake"] | None = None  # None -> llm_backend
+    agent_model: str | None = None  # None -> the backend's model setting
+    agent_max_steps: int = Field(default=4, gt=0, le=10)  # search_docs calls per question
+    agent_timeout_s: float = Field(default=90.0, gt=0)
+    agent_max_total_tokens: int = Field(default=30000, gt=0)
+
     def embedding_model_name(self) -> str:
         return {
             "local": self.local_embedding_model,

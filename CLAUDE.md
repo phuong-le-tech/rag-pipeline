@@ -6,7 +6,7 @@ every default. The owner is learning RAG through this project and will demo it i
 
 ## Before any work
 - Read `.claude/plans/rag-pipeline.plan.md`: phases, decisions, risks. Tick boxes as tasks land.
-- **Status: Phases 1–4 done. Next: Phase 5, the "glass-box" web UI** (upload file/URL/text,
+- **Status: Phases 1–4 done. Agent mode Phase 1 done (`.claude/plans/agent-mode.plan.md`). Next: Phase 5, the "glass-box" web UI** (upload file/URL/text,
   live pipeline progress, visible retrieval steps, clickable citations). Done: Next.js UI on
   the real pipeline via FastAPI + SSE, Kubernetes docs only, guards, privacy/legal, deploy
   config (`.claude/plans/production-v1.plan.md`). Next in Phase 5: uploads (Markdown first).
@@ -35,6 +35,7 @@ RAG_EMBEDDING_THREADS=6 uv run rag ingest data/k8s-docs   # incremental; ALWAYS 
                                           # (first full run ~35-60 min on CPU, re-runs seconds)
 uv run rag search "QUERY" [--mode M] [--rerank]   # ranked passages, no LLM
 uv run rag ask "QUESTION" [--rewrite]     # cited answer (defaults: hybrid+rerank+max 1/page)
+uv run rag ask "QUESTION" --agent         # agent mode: LLM decides what to search (prints steps)
 uv run rag eval [--config NAME] [--limit N]   # retrieval metrics, split by question origin
 uv run rag eval-answers [--config NAME] [--judge-backend B]   # faithfulness, citations, refusal
 uv run rag draft-questions --n 100 --seed S   # resumable
@@ -69,6 +70,8 @@ Long LLM or ingest jobs run in the background with output to `data/*.log`; never
   `citations.py` (parse/validate `[n]`), `generator.py` (`RAG_LLM_BACKEND`: `anthropic` →
   `ClaudeGenerator`, `openrouter` → `OpenAICompatibleGenerator`, `fake`; request timeout
   `RAG_LLM_TIMEOUT_S`), `answer.py` (`answer_question -> Answer`)
+- `src/rag/agent/`: `loop.py` (`run_agent`: turns, global citation registry, limits), `tools.py`
+  (`search_docs` schema and argument checks), `prompt.py` (agent rules, forced final turn)
 - `src/rag/evals/`: `metrics.py` (hit@k, recall@k, MRR, nDCG: page relevance, chunk ranks),
   `golden.py` (JSONL loader, unknown-source check), `runner.py` (`ABLATIONS`, `evaluate`,
   tables, `breakdown_markdown` by origin), `drafting.py` (sampling, drafts, `with_retry`),

@@ -2,6 +2,21 @@
 
 Newest first. Each entry: context, decision, consequences. Revisit when evals say otherwise.
 
+## 2026-10-12: Agent mode is opt-in; hand-written loop; 4-step cap; separate agent model
+- **Context**: the pipeline does one search per question, so it cannot retry a bad query or
+  split a comparison into parts. We want to measure an agent against the pipeline before any
+  change to defaults.
+- **Decision**: `rag ask --agent` only; the pipeline stays the default everywhere. The loop is
+  hand-written (no agent framework) so each limit and the citation registry are plain code.
+  Hard limits: 4 searches (`RAG_AGENT_MAX_STEPS`), 90 s checked between turns, 30,000 tokens,
+  then one forced final turn with tools off. The agent has its own `RAG_AGENT_BACKEND` and
+  `RAG_AGENT_MODEL`, falling back to the LLM settings, so the model can differ from the answer model.
+  The final answer is not streamed in v1.
+- **Consequence**: more model calls and latency per question; behaviour varies run to run and must
+  be measured in Phase 2 before it becomes a default. Tool-calling quality depends on the free
+  model. Smoke test 2026-10-12: the free Nemotron 3 Super model on OpenRouter makes valid tool
+  calls (1 search, 2 LLM calls, ~2,550 tokens on a Deployment vs StatefulSet question).
+
 ## 2026-10-12: Production v1 on Railway + Vercel, Kubernetes docs only
 - **Context**: the owner wants people to test the glass-box demo; it must be safe, cheap and
   honest about data. Uploads would add storage, cleanup and abuse surface.

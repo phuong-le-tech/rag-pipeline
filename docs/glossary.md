@@ -1,5 +1,11 @@
 # Glossary
 
+**Agent**: a setup where the model decides whether, what and how often to call tools, instead
+of a fixed code path. Our agent mode lets it call `search_docs` up to four steps. See chapter 8.
+
+**Agent loop**: the code that runs model turns, executes the tool calls they ask for, and stops
+on an answer or a limit. Ours is hand-written in `src/rag/agent/loop.py`.
+
 **ANN (approximate nearest neighbour)**: vector search that skips exhaustive comparison for
 speed, at a small recall cost. See HNSW.
 
@@ -107,3 +113,9 @@ IP) so one user or bot can't monopolise the service.
 
 **Readiness probe**: an endpoint (`/ready`) the host checks before sending traffic; ours fails
 until the database is reachable and the index is non-empty.
+
+**Tool call**: a model turn that asks the app to run a named function with JSON arguments (here: `search_docs`) instead of answering. The app runs it and sends back a tool result; the model then continues. Our `ToolCall` and `Turn` types hold this in a provider-neutral shape.
+
+**Tool use**: the general pattern behind tool calls. The app describes tools (name, description,
+JSON schema for arguments), the model asks for one, the app runs it and returns the result. The
+model never runs code itself.

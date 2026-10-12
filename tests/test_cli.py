@@ -1,6 +1,8 @@
+import contextlib
 import json
 from dataclasses import replace
 
+import anthropic
 import httpx
 import openai
 import psycopg
@@ -157,6 +159,61 @@ def test_ask_command_prints_answer_and_cited_sources(tmp_path, monkeypatch, test
     assert "https://kubernetes.io/docs/tasks/rollback/" in result.output
 
 
+@pytest.mark.integration
+def test_ask_agent_prints_steps_answer_and_counters(tmp_path, monkeypatch, test_database_url):
+    (tmp_path / "tasks").mkdir()
+    (tmp_path / "tasks" / "rollback.md").write_text(
+        "---\ntitle: Rollback\n---\nUse kubectl rollout undo to revert a Deployment.\n"
+    )
+    monkeypatch.setenv("RAG_DATABASE_URL", test_database_url)
+    monkeypatch.setenv("RAG_EMBEDDING_BACKEND", "fake")
+    monkeypatch.setenv("RAG_EMBEDDING_DIM", "8")
+    monkeypatch.setenv("RAG_LLM_BACKEND", "fake")
+    with psycopg.connect(test_database_url) as conn:
+        conn.execute("TRUNCATE documents RESTART IDENTITY CASCADE")
+    runner.invoke(cli.app, ["ingest", str(tmp_path)])
+
+    result = runner.invoke(cli.app, ["ask", "how do I revert?", "--agent", "--no-rerank"])
+
+    assert result.exit_code == 0, result.output
+    assert 'search_docs("rollback", k=5)' in result.output
+    assert "fake agent answer" in result.output
+    assert "[1] Rollback" in result.output
+    assert "stopped: answered" in result.output
+
+
+def test_ask_agent_error_hint_names_the_agent_backend(monkeypatch):
+    request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+    exc = anthropic.AuthenticationError(
+        "bad key", response=httpx.Response(401, request=request), body=None
+    )
+
+    def fail(*_args, **_kwargs):
+        raise exc
+
+    monkeypatch.setenv("RAG_EMBEDDING_BACKEND", "fake")
+    monkeypatch.setenv("RAG_LLM_BACKEND", "openrouter")
+    monkeypatch.setenv("RAG_AGENT_BACKEND", "anthropic")
+    monkeypatch.setattr(cli, "connect", lambda _settings: contextlib.nullcontext(object()))
+    monkeypatch.setattr(cli, "register_vector", lambda _conn: None)
+    monkeypatch.setattr(cli, "Retriever", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(cli, "_run_agent_with_trace", fail)
+
+    result = runner.invoke(cli.app, ["ask", "q", "--agent", "--no-rerank"])
+
+    assert result.exit_code == 1
+    assert "LLM call failed (anthropic)" in result.output
+    assert "ANTHROPIC_API_KEY" in result.output
+    assert "OPENROUTER_API_KEY" not in result.output
+
+
+def test_ask_agent_rejects_rewrite():
+    result = runner.invoke(cli.app, ["ask", "q", "--agent", "--rewrite"])
+
+    assert result.exit_code == 2
+    assert "cannot be combined with --rewrite" in result.output
+
+
 def _openai_error(cls, status):
     request = httpx.Request("POST", "https://openrouter.ai/api/v1/chat/completions")
     return cls("boom", response=httpx.Response(status, request=request), body=None)
@@ -196,6 +253,17 @@ def test_llm_error_hint_rate_limit_suggests_switching_openrouter_model():
     )
 
     assert "RAG_OPENROUTER_MODEL" in hint
+
+
+def test_llm_error_hint_agent_rate_limit_names_agent_model_not_llm_model():
+    hint = cli.llm_error_hint(
+        _openai_error(openai.RateLimitError, 429),
+        Settings(llm_backend="openrouter"),
+        agent=True,
+    )
+
+    assert "RAG_AGENT_MODEL" in hint
+    assert "RAG_OPENROUTER_MODEL" not in hint
 
 
 @pytest.mark.integration
