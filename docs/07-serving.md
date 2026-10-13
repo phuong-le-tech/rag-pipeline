@@ -65,6 +65,31 @@ Other endpoints: `GET /health` (process alive), `GET /ready` (database reachable
 non-empty: Railway waits for it before routing traffic), `GET /api/collection` (counts, model
 names for the UI footer).
 
+### Uploads ([`src/rag/ingest/upload.py`](../src/rag/ingest/upload.py))
+
+`POST /api/collections` takes a multipart `file` (`.md`/`.txt`) or JSON `{"text"}`, and streams
+the ingest as the same kind of SSE: `stage` events `load → clean → chunk → embed → store` (each
+with `ms` and counts; `chunk` carries the first 3 chunk previews), then
+`done {collection, docs, chunks}`. Ask about it with `POST /api/ask {"collection": "<id>"}`;
+`GET /api/collection?id=` returns its counts.
+
+- **The id is the access control.** `uuid4().hex` is 128 random bits: nobody can guess another
+  visitor's collection, so there are no accounts. The search filter makes an upload invisible to
+  Kubernetes questions and the reverse.
+- **Limits** protect a small CPU box: 1 MB body (checked from `Content-Length` and while reading,
+  before parsing), UTF-8 only (else 422), at most 300 chunks. Uploads share the per-IP rate limit
+  and the concurrency slots with ask. On a laptop, embedding 300 chunks took about 12 s with the
+  local model; the work runs in the request thread, like ask.
+- **No python-multipart.** The multipart body is parsed with the stdlib `email` parser, so the
+  API gains no dependency.
+- **24 h TTL.** The start of each upload deletes upload collections older than
+  `RAG_UPLOAD_TTL_HOURS` (chunks cascade). No scheduler to run; `k8s` is never touched.
+- **Nothing is logged** about an upload but a random id, status and total time: not the text,
+  not the filename.
+
+The generic loader (`load_upload`) skips the Hugo cleaning: it only normalises newlines, takes the
+title from the first H1 (else the filename) and namespaces the source as `upload:<id>/<name>`.
+
 ### Guards ([`src/rag/api/guards.py`](../src/rag/api/guards.py))
 
 A public demo will meet bots and enthusiastic testers. Each guard answers one failure:
@@ -86,7 +111,7 @@ count separately; that's when Redis would be needed.
 
 ### Privacy and logging
 
-The API stores nothing. One JSON log line per ask holds a random id, the status and stage
+The API stores nothing about questions; uploads are kept for up to 24 hours, then deleted. One JSON log line per ask holds a random id, the status and stage
 timings, never the question or the IP (uvicorn's access log, which prints IPs, is disabled in the
 Docker image). The UI says questions go to a third-party model and links `/privacy`; `/legal`
 credits the Kubernetes docs (CC BY 4.0 requires attribution). `next.config.ts` sets a Content

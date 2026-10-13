@@ -155,3 +155,51 @@ def test_prune_and_versions_are_scoped_to_the_collection(conn):
         ("up/mine.md", "x"),
         ("a/one.md", "k8s"),
     ]
+
+
+@pytest.mark.integration
+def test_upload_ingest_emits_stages_and_scopes_retrieval(conn):
+    from rag.config import Settings
+    from rag.ingest.upload import ingest_upload
+    from rag.retrieval.retriever import Retriever, RetrieverConfig
+
+    run(conn, [doc("a/one.md", "alpha pods", "h1")])
+    settings = Settings(_env_file=None, embedding_backend="fake", embedding_dim=DIM)
+
+    ev = list(
+        ingest_upload(
+            conn, FakeEmbedder(DIM), settings, "u" * 32, "n.md", "# Mine\n\nalpha pods too"
+        )
+    )
+
+    assert [d["name"] for e, d in ev if e == "stage"] == [
+        "load",
+        "clean",
+        "chunk",
+        "embed",
+        "store",
+    ]
+    assert ev[-1][0] == "done" and ev[-1][1]["chunks"] >= 1
+    config = RetrieverConfig(mode="keyword", collection="u" * 32, rerank=False)
+    hits = Retriever(conn, FakeEmbedder(DIM), None).retrieve("alpha pods", config)
+    assert hits and all(h.source.startswith("upload:") for h in hits)
+
+
+@pytest.mark.integration
+def test_purge_expired_removes_old_uploads_and_never_k8s(conn):
+    from rag.ingest.upload import purge_expired
+
+    ingest(conn, [doc("up/old.md", "x", "u1")], FakeEmbedder(DIM), 1500, FP, False, collection="x")
+    ingest(conn, [doc("up/new.md", "x", "u2")], FakeEmbedder(DIM), 1500, FP, False, collection="y")
+    run(conn, [doc("a/one.md", "alpha", "h1")])
+    conn.execute(
+        "UPDATE documents SET created_at = now() - interval '25 hours' WHERE collection <> 'y'"
+    )
+    conn.commit()
+
+    assert purge_expired(conn, 24) == 1  # 'x' only; old 'k8s' row is kept
+    assert [r[0] for r in conn.execute("SELECT collection FROM documents ORDER BY id")] == [
+        "y",
+        "k8s",
+    ]
+    assert counts(conn)[1] == 2  # chunks of the deleted doc cascaded

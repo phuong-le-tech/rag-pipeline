@@ -185,7 +185,9 @@ protected by the [guards](#security-and-privacy) below.
 | `GET /health` | Liveness: the process is up |
 | `GET /ready` | Readiness: database reachable and index non-empty (503 otherwise) |
 | `GET /api/collection` | Document and chunk counts, LLM and embedding model names |
-| `POST /api/ask` | Answer a question as a server-sent event stream |
+| `GET /api/collection?id=` | Counts for one upload collection (404 if unknown or expired) |
+| `POST /api/collections` | Upload a `.md`/`.txt` file (multipart `file`) or JSON `{"text"}`; streams `stage` events (`load`, `clean`, `chunk`, `embed`, `store`) then `done {collection, docs, chunks}`. Max 1 MB, UTF-8, 300 chunks. Stored up to 24 h, never logged |
+| `POST /api/ask` | Answer a question as a server-sent event stream; optional `collection` (32 hex) asks over an upload |
 
 `POST /api/ask` body: `{"question": "...", "k": 5, "rerank": true, "max_one_per_page": true}`
 (`question` 1–500 characters, `k` 3–10). The response is `text/event-stream`:
@@ -232,6 +234,7 @@ Environment variables (or `.env` locally). Settings use the `RAG_` prefix; API k
 | `RAG_RATE_LIMIT_PER_MINUTE` | `10` | questions per client IP |
 | `RAG_DAILY_LLM_LIMIT` | `300` | LLM calls per UTC day; retrieval keeps working past it |
 | `RAG_MAX_CONCURRENT_ASKS` | `2` | extra requests get `503 busy` |
+| `RAG_UPLOAD_TTL_HOURS` | `24` | uploads older than this are deleted at the next upload |
 
 Web (`web/`, inlined at build time, so changes need a rebuild):
 

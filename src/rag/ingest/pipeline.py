@@ -53,7 +53,7 @@ def _stored_versions(
     return {source: (content_hash, pipeline) for source, content_hash, pipeline in rows}
 
 
-def _store(
+def store_document(
     conn: psycopg.Connection,
     doc: Document,
     chunks: Sequence[Chunk],
@@ -115,7 +115,7 @@ def ingest(
         else:
             chunks = chunk_markdown(doc.text, max_chars)
             vectors = embedder.embed([embedding_text(c) for c in chunks])
-            _store(conn, doc, chunks, vectors, fingerprint, collection)
+            store_document(conn, doc, chunks, vectors, fingerprint, collection)
             total_chunks += len(chunks)
             if previous is None:
                 added += 1

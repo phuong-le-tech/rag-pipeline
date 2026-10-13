@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     rate_limit_per_minute: int = Field(default=10, gt=0)
     daily_llm_limit: int = Field(default=300, ge=0)
     max_concurrent_asks: int = Field(default=2, gt=0)
+    upload_ttl_hours: int = Field(default=24, gt=0)  # visitor uploads are deleted after this
 
     # Agent mode: a separate backend, model and limits so the agent can use a different model.
     agent_backend: Literal["anthropic", "openrouter", "fake"] | None = None  # None -> llm_backend
