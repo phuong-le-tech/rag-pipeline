@@ -431,9 +431,9 @@ def usage_of(generator: object) -> Usage | None   # getattr(generator, "usage", 
 ```
 `stream()` is not counted (evals don't stream; documented in the docstring). Anthropic usage: `response.usage.input_tokens/output_tokens`; OpenAI: `response.usage.prompt_tokens/completion_tokens`; missing `usage` → `add(None, None)` (no change).
 
-- [ ] **Step 1: failing tests**: `Usage.add` sums and flips `reported`; `add(None, None)` leaves `reported` False; ClaudeGenerator.generate with a fake response carrying usage 100/20 then chat with 50/5 → usage 150/25 reported; OpenAI generate with `usage=None` → reported False; `usage_of(FakeGenerator())` is None; `usage_of(RetryingGenerator(gen))` returns `gen.usage` (RetryingGenerator lives in `rag.evals.answers`, test it in tests/test_answers.py).
-- [ ] **Step 2:** `uv run pytest tests/test_generate.py -k usage -v` → FAIL. **Step 3:** implement. **Step 4:** pass; existing generate/stream tests unchanged.
-- [ ] **Step 5:** commit `feat(generate): cumulative token usage on real backends`
+- [x] **Step 1: failing tests**: `Usage.add` sums and flips `reported`; `add(None, None)` leaves `reported` False; ClaudeGenerator.generate with a fake response carrying usage 100/20 then chat with 50/5 → usage 150/25 reported; OpenAI generate with `usage=None` → reported False; `usage_of(FakeGenerator())` is None; `usage_of(RetryingGenerator(gen))` returns `gen.usage` (RetryingGenerator lives in `rag.evals.answers`, test it in tests/test_answers.py).
+- [x] **Step 2:** `uv run pytest tests/test_generate.py -k usage -v` → FAIL. **Step 3:** implement. **Step 4:** pass; existing generate/stream tests unchanged.
+- [x] **Step 5:** commit `feat(generate): cumulative token usage on real backends`
 
 ### Task 2.2: one evaluation loop for pipeline and agent, with counters, origin split, p95 and cost
 
@@ -477,9 +477,9 @@ Per-origin: `report.by_origin: dict[str, dict[str, float]]` = `_summary` over re
 
 The CLI call site must keep working in this task: update `eval_answers_cmd` to build `pipeline_answerer(...)` and pass it (no new flags yet — Task 2.4 adds them).
 
-- [ ] **Step 1: failing tests** (reuse the file's StubRetriever / ByQuestionGenerator / StubJudge / GOLDEN): existing `run()` adapted to `pipeline_answerer` keeps every existing assertion (proves pipeline metrics unchanged); agent mode with `ScriptedToolGenerator` per question via `make_llm` and a fake `search` → `tool_calls`, `llm_calls`, `stopped` recorded and judge called with registry passages; p95 on latencies [1..20] → 19; by_origin splits human vs llm (add one `llm`-origin GoldenItem in a new test, not in the shared fixture); cost with prices 1.0/2.0 and tokens 1,000/500 → 0.002; a pipeline generator exposing `usage` yields per-question deltas; `RetryingGenerator.chat` retries a rate-limit error then succeeds.
-- [ ] **Step 2–4:** fail → implement → `uv run pytest tests/test_answers.py tests/test_cli.py -q` pass.
-- [ ] **Step 5:** commit `feat(evals): shared answer loop for pipeline and agent, origin split, p95, cost`
+- [x] **Step 1: failing tests** (reuse the file's StubRetriever / ByQuestionGenerator / StubJudge / GOLDEN): existing `run()` adapted to `pipeline_answerer` keeps every existing assertion (proves pipeline metrics unchanged); agent mode with `ScriptedToolGenerator` per question via `make_llm` and a fake `search` → `tool_calls`, `llm_calls`, `stopped` recorded and judge called with registry passages; p95 on latencies [1..20] → 19; by_origin splits human vs llm (add one `llm`-origin GoldenItem in a new test, not in the shared fixture); cost with prices 1.0/2.0 and tokens 1,000/500 → 0.002; a pipeline generator exposing `usage` yields per-question deltas; `RetryingGenerator.chat` retries a rate-limit error then succeeds.
+- [x] **Step 2–4:** fail → implement → `uv run pytest tests/test_answers.py tests/test_cli.py -q` pass.
+- [x] **Step 5:** commit `feat(evals): shared answer loop for pipeline and agent, origin split, p95, cost`
 
 ### Task 2.3: resumable answer evaluation
 
@@ -495,8 +495,8 @@ def evaluate_answers(..., checkpoint: Path | None = None) -> AnswerReport
 ```
 CLI: `eval-answers --resume PATH` (default None). Without `--resume`, the CLI uses a fresh checkpoint `out/<timestamp>-answers.partial.jsonl` so an interrupted run can be resumed by passing that path; the final JSON is still written by `write_answer_results`. The checkpoint path is printed at start (`Checkpoint: …`).
 
-- [ ] **Step 1: failing tests**: run with checkpoint, interrupt after 2 jobs (answerer raises on the 3rd question), rerun with same checkpoint → answerer called only for the remaining ids, judge not re-called for the first 2, final summary equals an uninterrupted run; checkpoint lines are valid JSON with `id`.
-- [ ] **Step 2–4:** fail → implement → pass. **Step 5:** commit `feat(evals): resume answer evaluation from a checkpoint`
+- [x] **Step 1: failing tests**: run with checkpoint, interrupt after 2 jobs (answerer raises on the 3rd question), rerun with same checkpoint → answerer called only for the remaining ids, judge not re-called for the first 2, final summary equals an uninterrupted run; checkpoint lines are valid JSON with `id`.
+- [x] **Step 2–4:** fail → implement → pass. **Step 5:** commit `feat(evals): resume answer evaluation from a checkpoint`
 
 ### Task 2.4: `eval-answers` flags for agent mode, k, judge model and prices
 
@@ -509,8 +509,8 @@ New options: `--mode pipeline|agent` (default pipeline), `--k N` (default None =
 - Meta adds: `mode`, `k`, `agent_llm` (label for `agent_backend or llm_backend` + `agent_model or default`, only in agent mode), `agent_limits` (dict), `judge` label reflects `--judge-model`, `prices`.
 - `_llm_label` gains an optional model override so labels are truthful.
 
-- [ ] **Step 1: failing tests** (unit, monkeypatch `connect`, `Retriever`, `make_reranker`, `make_embedder`, `evaluate_answers` to capture arguments — follow the monkeypatch style of the existing agent CLI unit test): `--mode agent` passes an answerer that is agent-based (call it with a fake to check), `--judge-model x --judge-backend openrouter` gives a judge whose model is `x`, `--k 5` changes config k, meta contains mode/k/judge label; `--mode bogus` exits non-zero. Keep the existing integration test for eval-answers green.
-- [ ] **Step 2–4:** fail → implement → pass. **Step 5:** commit `feat(cli): eval-answers --mode agent, --k, --judge-model, prices`
+- [x] **Step 1: failing tests** (unit, monkeypatch `connect`, `Retriever`, `make_reranker`, `make_embedder`, `evaluate_answers` to capture arguments — follow the monkeypatch style of the existing agent CLI unit test): `--mode agent` passes an answerer that is agent-based (call it with a fake to check), `--judge-model x --judge-backend openrouter` gives a judge whose model is `x`, `--k 5` changes config k, meta contains mode/k/judge label; `--mode bogus` exits non-zero. Keep the existing integration test for eval-answers green.
+- [x] **Step 2–4:** fail → implement → pass. **Step 5:** commit `feat(cli): eval-answers --mode agent, --k, --judge-model, prices`
 
 ### Task 2.5: multi-part question drafts
 
@@ -518,8 +518,8 @@ New options: `--mode pipeline|agent` (default pipeline), `--k N` (default None =
 
 - 15 drafts, one JSON object per line, same keys as `evals/drafts.jsonl`: `id` (`multi-01`…`multi-15`), `question`, `relevant_sources` (2–3 corpus paths relative to `data/k8s-docs`, **each must exist**), `reference_answer` (one or two sentences covering every part), `tags` (`["multi-draft", "comparison"|"multi-part"]`), `origin: "multi"`.
 - Mix: 8 comparisons (e.g. Deployment vs StatefulSet; ConfigMap vs Secret; ClusterIP vs NodePort vs LoadBalancer; liveness vs readiness probe; Job vs CronJob; requests vs limits; DaemonSet vs Deployment; PV vs PVC), 7 multi-part how-tos (e.g. "create a Secret and mount it as a volume", "drain a node then uncordon it", "set resource limits and see a pod's usage"). Reference answers come from reading the source pages, not from memory.
-- [ ] **Step 1: failing test**: `load_golden` accepts origin `multi`; a test that every `relevant_sources` path in `evals/drafts-multi.jsonl` exists under `data/k8s-docs` (skip if the corpus is absent, like other corpus-dependent tests) and that each row has ≥ 2 sources.
-- [ ] **Step 2–4:** fail → implement + write drafts → pass. **Step 5:** commit `feat(evals): multi-part question drafts and the multi origin`
+- [x] **Step 1: failing test**: `load_golden` accepts origin `multi`; a test that every `relevant_sources` path in `evals/drafts-multi.jsonl` exists under `data/k8s-docs` (skip if the corpus is absent, like other corpus-dependent tests) and that each row has ≥ 2 sources.
+- [x] **Step 2–4:** fail → implement + write drafts → pass. **Step 5:** commit `feat(evals): multi-part question drafts and the multi origin`
 - [ ] **Owner step (not a subagent):** `uv run rag review-drafts --drafts evals/drafts-multi.jsonl --golden evals/multi.jsonl --reviewed evals/drafts-multi-reviewed.txt`
 
 ### Runs (controller, background, after 2.1–2.5 are merged into the branch)
