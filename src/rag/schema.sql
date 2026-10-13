@@ -9,6 +9,11 @@ CREATE TABLE IF NOT EXISTS documents (
     updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Existing databases predate these columns; CREATE TABLE IF NOT EXISTS would skip them.
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS collection TEXT NOT NULL DEFAULT 'k8s';
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now();
+CREATE INDEX IF NOT EXISTS documents_collection ON documents (collection);
+
 CREATE TABLE IF NOT EXISTS chunks (
     id          BIGSERIAL PRIMARY KEY,
     document_id BIGINT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,

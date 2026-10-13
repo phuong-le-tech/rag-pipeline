@@ -85,7 +85,9 @@ def default_services(settings: Settings) -> Services:  # pragma: no cover - need
     def stats() -> dict:
         with connect(settings) as conn:
             docs, chunks = conn.execute(
-                "SELECT (SELECT count(*) FROM documents), (SELECT count(*) FROM chunks)"
+                "SELECT (SELECT count(*) FROM documents WHERE collection = 'k8s'), "
+                "(SELECT count(*) FROM chunks c JOIN documents d ON d.id = c.document_id "
+                "WHERE d.collection = 'k8s')"
             ).fetchone()
         return {"docs": docs, "chunks": chunks}
 

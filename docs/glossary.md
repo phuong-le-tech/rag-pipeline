@@ -24,6 +24,9 @@ goes; `--resume` skips finished ids, so a stopped run does not re-spend API quot
 
 **Chunk**: a passage of a document; the unit that is embedded, retrieved and cited.
 
+**Collection**: a named set of documents in one index (`documents.collection`). Kubernetes docs
+are `k8s`; uploads get their own. Searches, ingest versions and pruning are scoped to one.
+
 **Citation coverage**: share of answer sentences that carry at least one `[n]` citation.
 
 **Contextual chunk header**: prepending the document title / heading path to a chunk before

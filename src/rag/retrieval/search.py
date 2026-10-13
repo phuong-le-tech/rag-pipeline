@@ -20,12 +20,13 @@ SELECT_HIT = """
 GENERATED_FILTER = (
     "(%(include_generated)s OR NOT coalesce((d.metadata->>'generated')::boolean, false))"
 )
+COLLECTION_FILTER = "d.collection = %(collection)s"
 
 DENSE_SQL = f"""
 SELECT * FROM (
     SELECT {SELECT_HIT}, c.embedding <=> %(vec)s AS distance
     FROM chunks c JOIN documents d ON d.id = c.document_id
-    WHERE {GENERATED_FILTER}
+    WHERE {GENERATED_FILTER} AND {COLLECTION_FILTER}
     ORDER BY c.embedding <=> %(vec)s
     LIMIT %(limit)s
 ) candidates
@@ -40,7 +41,7 @@ SELECT {SELECT_HIT}, ts_rank_cd(c.tsv, q) AS score
 FROM chunks c
 JOIN documents d ON d.id = c.document_id,
      to_tsquery('english', replace(plainto_tsquery('english', %(query)s)::text, ' & ', ' | ')) q
-WHERE c.tsv @@ q AND {GENERATED_FILTER}
+WHERE c.tsv @@ q AND {GENERATED_FILTER} AND {COLLECTION_FILTER}
 ORDER BY score DESC, c.id
 LIMIT %(limit)s
 """
@@ -76,18 +77,29 @@ def dense_search(
     query_vector: Sequence[float],
     limit: int,
     include_generated: bool = True,
+    collection: str = "k8s",
 ) -> list[Hit]:
     _configure_hnsw(conn, limit)
     params = {
         "vec": np.asarray(query_vector, dtype=np.float32),
         "limit": limit,
         "include_generated": include_generated,
+        "collection": collection,
     }
     return [_hit(row, 1.0 - row[7]) for row in conn.execute(DENSE_SQL, params)]
 
 
 def keyword_search(
-    conn: psycopg.Connection, query: str, limit: int, include_generated: bool = True
+    conn: psycopg.Connection,
+    query: str,
+    limit: int,
+    include_generated: bool = True,
+    collection: str = "k8s",
 ) -> list[Hit]:
-    params = {"query": query, "limit": limit, "include_generated": include_generated}
+    params = {
+        "query": query,
+        "limit": limit,
+        "include_generated": include_generated,
+        "collection": collection,
+    }
     return [_hit(row, row[7]) for row in conn.execute(KEYWORD_SQL, params)]

@@ -2,6 +2,20 @@
 
 Newest first. Each entry: context, decision, consequences. Revisit when evals say otherwise.
 
+## 2026-10-13: Uploads get their own `collection`, not a second table or database
+**Context.** Phase 5 uploads must not leak into Kubernetes answers, evals or `rag ingest` pruning
+(which deletes every document missing from the run).
+**Decision.** `documents.collection` (default `'k8s'`). Searches filter on it
+(`RetrieverConfig.collection`), `ingest` reads and prunes only its own collection, `/api/collection`
+counts only `k8s`, and `publish_index.sh` deletes only `k8s` rows instead of truncating.
+**Consequences.** Default behaviour is unchanged (same Hit@5 / MRR). A filtered HNSW scan can return
+fewer rows than asked, so iterative scan stays on and an integration test checks it. `source` is
+still globally unique: upload sources must be namespaced. `publish_index.sh` copies explicit ids, so
+publishing into a target that already holds uploads can collide on ids (not handled yet).
+On an existing DB the new column has no planner statistics until autovacuum or
+`ANALYZE documents`; before that the planner may skip HNSW for an exact scan (Hit@5 moved
+0.894 → 0.904 until we analysed).
+
 ## 2026-10-13: Agent mode stays opt-in; answer judge is a free OpenRouter model
 - **Context**: first measured comparison of pipeline and agent on the same 94 answerable and 15
   unanswerable questions, same retrieval and answer model. The owner runs no paid Claude calls, so
