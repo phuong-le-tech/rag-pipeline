@@ -203,3 +203,15 @@ def test_purge_expired_removes_old_uploads_and_never_k8s(conn):
         "k8s",
     ]
     assert counts(conn)[1] == 2  # chunks of the deleted doc cascaded
+
+
+def test_upload_over_chunk_limit_is_rejected_before_embedding():
+    from rag.config import Settings
+    from rag.embed import FakeEmbedder
+    from rag.ingest.upload import MAX_UPLOAD_CHUNKS, ingest_upload
+
+    text = "\n\n".join(f"# H{i}\n\n" + "word " * 20 for i in range(MAX_UPLOAD_CHUNKS + 5))
+    events = ingest_upload(None, FakeEmbedder(8), Settings(), "a" * 32, "big.md", text)
+
+    with pytest.raises(ValueError, match="chunks"):
+        list(events)
