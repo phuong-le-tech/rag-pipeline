@@ -6,7 +6,7 @@ every default. The owner is learning RAG through this project and will demo it i
 
 ## Before any work
 - Read `.claude/plans/rag-pipeline.plan.md`: phases, decisions, risks. Tick boxes as tasks land.
-- **Status: Phases 1–4 done. Agent mode Phase 1 done (`.claude/plans/agent-mode.plan.md`). Next: Phase 5, the "glass-box" web UI** (upload file/URL/text,
+- **Status: Phases 1–4 done. Agent mode Phase 1 done (`.claude/plans/agent-mode.plan.md`). Next: Phase 5, the web UI** (upload file/URL/text,
   live pipeline progress, visible retrieval steps, clickable citations). Done: Next.js UI on
   the real pipeline via FastAPI + SSE, Kubernetes docs only, guards, privacy/legal, deploy
   config (`.claude/plans/production-v1.plan.md`). Next in Phase 5: uploads (Markdown first).
@@ -45,7 +45,7 @@ uv run pytest -m "not integration" --cov=rag   # unit tests
 uv run pytest -m integration                   # needs compose DB
 uv run uvicorn rag.api.app:main --factory --port 8000   # API for the UI (DB + index needed)
 scripts/publish_index.sh "$TARGET_DATABASE_URL"   # copy local index to a remote Postgres
-cd web && npm install && npm run dev           # glass-box UI, http://localhost:3000
+cd web && npm install && npm run dev           # web UI, http://localhost:3000
 cd web && npm test && npm run build            # API-client tests + production build
 ```
 Long LLM or ingest jobs run in the background with output to `data/*.log`; never poll with sleep.

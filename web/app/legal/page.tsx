@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { CONTACT, PUBLISHER, UPDATED } from "@/lib/site.ts";
 
-export const metadata: Metadata = { title: "Legal notice · Glass-box RAG" };
+export const metadata: Metadata = { title: "Legal notice · Measured RAG" };
 
 export default function Legal() {
   return (

@@ -317,7 +317,7 @@ export default function GlassBox() {
         <header className="topbar">
           <div className="brand">
             <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="2.5" y="2.5" width="15" height="15" rx="4" stroke="currentColor" strokeWidth="1.5" /><rect x="7" y="7" width="6" height="6" rx="1.5" fill="var(--ac)" /></svg>
-            <span>Glass-box RAG</span>
+            <span>Measured RAG</span>
           </div>
           <span className="sep" aria-hidden="true" />
           <button className="collsel" ref={refs.coll} type="button" aria-haspopup="menu" aria-expanded={S.menu === "coll"} onClick={() => toggleMenu("coll")}>

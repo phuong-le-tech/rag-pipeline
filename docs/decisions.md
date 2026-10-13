@@ -2,6 +2,15 @@
 
 Newest first. Each entry: context, decision, consequences. Revisit when evals say otherwise.
 
+## 2026-10-13: Project name "Measured RAG"
+- **Context**: the project is a portfolio piece to show RAG skills. "Glass-box RAG" described the
+  UI, not what sets the project apart, and Kubernetes is only the demo corpus.
+- **Decision**: the product name is **Measured RAG**: every design choice is backed by an
+  evaluation. Kubernetes moves to the subtitle ("demo corpus").
+- **Consequences**: README, web UI titles, the web package name and the API title change. The
+  Python package and the `rag` command, the `GlassBox` component and older log entries keep their
+  names (internal or historical). The GitHub repo can be renamed separately; GitHub redirects.
+
 ## 2026-10-13: Agent mode stays opt-in; answer judge is a free OpenRouter model
 - **Context**: first measured comparison of pipeline and agent on the same 94 answerable and 15
   unanswerable questions, same retrieval and answer model. The owner runs no paid Claude calls, so

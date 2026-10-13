@@ -1,22 +1,24 @@
-# Glass-box RAG
+# Measured RAG
 
 [![ci](https://github.com/phuong-le-tech/rag-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/phuong-le-tech/rag-pipeline/actions/workflows/ci.yml)
 ![python](https://img.shields.io/badge/python-3.12-blue)
 ![next.js](https://img.shields.io/badge/next.js-16-black)
 ![postgres](https://img.shields.io/badge/postgres-17%20%2B%20pgvector-336791)
 
-Ask questions about the Kubernetes documentation and **watch every step of the answer**: dense and
+A retrieval-augmented question answering system built without a RAG framework, where **every
+design choice is backed by a measurement**: hybrid vs dense search, reranking, chunk diversity,
+query rewriting, and a fixed pipeline vs an agent, each decided on 94 reviewed questions plus 15
+unanswerable ones.
+
+Demo corpus: the Kubernetes documentation. The web UI shows every step of an answer: dense and
 keyword search, rank fusion, cross-encoder reranking, the streamed answer and the exact passage
 behind each citation.
-
-Built without a RAG framework so every stage is visible, tested and measured. Every default is
-backed by an evaluation on 94 reviewed questions.
 
 - **Hybrid retrieval**: pgvector (HNSW) + Postgres full-text, fused with Reciprocal Rank Fusion
 - **Cross-encoder reranking** and one-chunk-per-page diversity (+0.15 Hit@5 over plain hybrid)
 - **Cited answers with refusal**: every `[n]` is validated against the passages sent to the
   model; 0 invented citations, 14/15 unanswerable questions refused
-- **Glass-box UI**: each stage streams over server-sent events with its hits, scores and timing
+- **Step-by-step UI**: each stage streams over server-sent events with its hits, scores and timing
 - **Opt-in agent mode**: a hand-written tool-calling loop (no framework) where the model decides
   what to search and how often; on the same 94 + 15 questions it cuts false refusals from 7 to 1
   for ~2.9× the tokens, so the fixed pipeline stays the default

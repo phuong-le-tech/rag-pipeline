@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     anthropic_api_key: SecretStr | None = Field(default=None, alias="ANTHROPIC_API_KEY")
     openrouter_api_key: SecretStr | None = Field(default=None, alias="OPENROUTER_API_KEY")
 
-    # API (glass-box UI backend)
+    # API (web UI backend)
     cors_origins: str = "http://localhost:3000"  # comma-separated
     rate_limit_per_minute: int = Field(default=10, gt=0)
     daily_llm_limit: int = Field(default=300, ge=0)
