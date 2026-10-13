@@ -195,3 +195,117 @@ def test_rate_limiter_forgets_idle_clients():
     t[0] = 61.0
     rl.check("b")
     assert "a" not in rl.calls
+
+
+# --- uploads ---------------------------------------------------------------------------------
+
+CID = "a" * 32
+
+
+def fake_upload(collection, filename, text):
+    yield "stage", {"name": "load", "ms": 0}
+    yield "stage", {"name": "store", "ms": 1}
+    yield "done", {"collection": collection, "docs": 1, "chunks": 2}
+
+
+def upload_client(**overrides):
+    @contextmanager
+    def factory():
+        yield StagedFake()
+
+    settings = Settings(_env_file=None, **overrides)
+    services = Services(
+        factory,
+        FakeGenerator("x"),
+        lambda c="k8s": {"docs": {"k8s": 5, CID: 1}.get(c, 0), "chunks": 2},
+        fake_upload,
+    )
+    return TestClient(create_app(settings, services))
+
+
+def test_upload_file_streams_stages_then_done():
+    resp = upload_client().post(
+        "/api/collections", files={"file": ("notes.md", b"# Notes\n\nhello", "text/markdown")}
+    )
+
+    ev = events(resp)
+    assert [e for e, _ in ev] == ["stage", "stage", "done"]
+    assert len(ev[-1][1]["collection"]) == 32 and ev[-1][1]["chunks"] == 2
+
+
+def test_upload_json_text():
+    resp = upload_client().post("/api/collections", json={"text": "# Hi\n\nthere"})
+    assert events(resp)[-1][0] == "done"
+
+
+def test_upload_rejects_oversize_with_413():
+    resp = upload_client().post("/api/collections", json={"text": "x" * 1_100_000})
+    assert resp.status_code == 413
+
+
+def test_upload_rejects_non_utf8_with_422():
+    resp = upload_client().post(
+        "/api/collections", files={"file": ("a.md", b"\xff\xfe\x00bad", "text/markdown")}
+    )
+    assert resp.status_code == 422 and resp.json()["error"] == "not_utf8"
+
+
+def test_upload_rejects_unknown_content_type():
+    resp = upload_client().post(
+        "/api/collections", content=b"hi", headers={"content-type": "text/plain"}
+    )
+    assert resp.status_code == 422
+
+
+def test_upload_is_rate_limited_and_uses_a_slot():
+    c = upload_client(rate_limit_per_minute=1)
+    assert c.post("/api/collections", json={"text": "a"}).status_code == 200
+    assert c.post("/api/collections", json={"text": "a"}).status_code == 429
+    busy = upload_client(max_concurrent_asks=1)
+    busy.app.state.slots.acquire()
+    assert busy.post("/api/collections", json={"text": "a"}).status_code == 503
+
+
+def test_upload_limit_error_is_reported_in_band():
+    def too_big(collection, filename, text):
+        raise ValueError("upload has 301 chunks; the limit is 300")
+        yield  # pragma: no cover
+
+    c = upload_client()
+    c.app.state.services = Services(
+        c.app.state.services.retriever_factory, FakeGenerator("x"), lambda: {}, too_big
+    )
+    ev = events(c.post("/api/collections", json={"text": "a"}))
+    assert ev == [
+        ("error", {"code": "rejected", "message": "upload has 301 chunks; the limit is 300"})
+    ]
+
+
+def test_ask_passes_collection_and_rejects_bad_ids():
+    seen = []
+
+    class Spy(StagedFake):
+        def retrieve(self, query, config, on_stage=None):
+            seen.append(config.collection)
+            return super().retrieve(query, config, on_stage)
+
+    @contextmanager
+    def factory():
+        yield Spy()
+
+    services = Services(factory, FakeGenerator("Use [1]."), lambda: {"docs": 1, "chunks": 1})
+    c = TestClient(create_app(Settings(_env_file=None), services))
+
+    c.post("/api/ask", json={"question": "q", "collection": CID})
+    c.post("/api/ask", json={"question": "q"})
+    bad = c.post("/api/ask", json={"question": "q", "collection": "../k8s"})
+
+    assert seen == [CID, "k8s"] and bad.status_code == 422
+
+
+def test_collection_stats_by_id():
+    c = upload_client()
+    assert c.get(f"/api/collection?id={CID}").json()["docs"] == 1
+    assert c.get(f"/api/collection?id={'b' * 32}").status_code == 404
+    assert c.get("/api/collection?id=nope").status_code == 422
+    assert c.get("/api/collection").json()["name"] == "Kubernetes docs"

@@ -2,6 +2,18 @@
 
 Newest first. Each entry: context, decision, consequences. Revisit when evals say otherwise.
 
+## 2026-10-13: Uploads are capability-id collections that expire after 24 h
+**Context.** Visitors should ask questions over their own Markdown/text without accounts, on a
+public demo with a small CPU box and a privacy page that promises not to keep questions.
+**Decision.** `POST /api/collections` creates a collection named by `uuid4().hex`; knowing the id is
+the only access control. Limits: 1 MB, UTF-8, 300 chunks, shared rate limit and slots. Expiry
+is `RAG_UPLOAD_TTL_HOURS` (24), enforced lazily at the start of each upload instead of by a
+scheduler. Multipart is parsed with the stdlib to avoid a new dependency.
+**Consequences.** Anyone who learns an id can read that upload (acceptable for 24 h demo data; ids
+are never logged). Expired rows linger until the next upload happens, so retention is "at most 24 h
+plus until the next upload"; the privacy page says "up to 24 hours". Embedding runs in the request
+thread, so a burst of uploads is bounded by the concurrency slots, not by a queue.
+
 ## 2026-10-13: Uploads get their own `collection`, not a second table or database
 **Context.** Phase 5 uploads must not leak into Kubernetes answers, evals or `rag ingest` pruning
 (which deletes every document missing from the run).

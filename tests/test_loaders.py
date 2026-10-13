@@ -189,3 +189,20 @@ def test_iter_documents_walks_markdown_sorted_and_skips_others(tmp_path):
     docs = list(iter_documents(tmp_path))
 
     assert [d.source for d in docs] == ["a/one.md", "b/two.md"]
+
+
+def test_load_upload_title_source_and_hygiene():
+    from rag.ingest.loaders import load_upload
+
+    doc = load_upload("intro\r\n\r\n# My Notes\r\nbody\x00", "../dir/notes.md", "c" * 32)
+
+    assert doc.source == f"upload:{'c' * 32}/notes.md"
+    assert doc.title == "My Notes" and doc.url == "" and doc.text == "intro\n\n# My Notes\nbody"
+
+
+def test_load_upload_falls_back_to_filename_and_rejects_empty():
+    from rag.ingest.loaders import load_upload
+
+    assert load_upload("just text", "a.txt", "c").title == "a.txt"
+    with pytest.raises(ValueError, match="empty"):
+        load_upload("  \n", "a.txt", "c")
