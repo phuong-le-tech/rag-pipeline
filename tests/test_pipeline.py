@@ -134,3 +134,24 @@ def test_keyword_index_is_populated(conn):
     ).fetchone()[0]
 
     assert hit == 1
+
+
+@pytest.mark.integration
+def test_prune_and_versions_are_scoped_to_the_collection(conn):
+    ingest(
+        conn,
+        [doc("up/mine.md", "uploaded", "u1")],
+        FakeEmbedder(DIM),
+        max_chars=1500,
+        fingerprint=FP,
+        prune=False,
+        collection="x",
+    )
+
+    stats = run(conn, [doc("a/one.md", "alpha", "h1")])  # k8s run with prune=True
+
+    assert stats.deleted == 0
+    assert conn.execute("SELECT source, collection FROM documents ORDER BY id").fetchall() == [
+        ("up/mine.md", "x"),
+        ("a/one.md", "k8s"),
+    ]

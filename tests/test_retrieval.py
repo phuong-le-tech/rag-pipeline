@@ -132,3 +132,32 @@ def test_retrieve_reports_each_stage(indexed):
     assert [s[0] for s in seen] == ["dense", "keyword", "fusion"]
     assert all(ok for *_, ok in seen)
     assert len(hits) == 2
+
+
+@pytest.mark.integration
+def test_other_collection_is_never_returned_by_default(indexed):
+    other = Document(
+        source="upload:x/rollback.md",
+        url="",
+        title="Mine",
+        section="",
+        text="# Mine\n\nRollback notes from an uploaded file.",
+        content_hash="x",
+        generated=False,
+    )
+    ingest(indexed, [other], EMB, max_chars=1500, fingerprint="fake", prune=False, collection="x")
+    vec = EMB.embed(["Mine\n\nRollback notes from an uploaded file."])[0]
+
+    default_dense = dense_search(indexed, vec, limit=10)
+    default_keyword = keyword_search(indexed, "rollback uploaded", limit=10)
+    scoped = dense_search(indexed, vec, limit=10, collection="x")
+
+    assert "upload:x/rollback.md" not in sources(default_dense)
+    assert "upload:x/rollback.md" not in sources(default_keyword)
+    assert len(default_dense) == len(DOCS)  # filtered HNSW scan still returns every k8s chunk
+    assert sources(scoped) == ["upload:x/rollback.md"]
+    assert sources(keyword_search(indexed, "rollback", limit=10, collection="x")) == [
+        "upload:x/rollback.md"
+    ]
+    cfg = RetrieverConfig(mode="dense", k=3, candidates=10, collection="x")
+    assert sources(Retriever(indexed, EMB).retrieve("rollback", cfg)) == ["upload:x/rollback.md"]
