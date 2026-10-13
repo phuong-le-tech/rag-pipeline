@@ -140,7 +140,7 @@ export default function GlassBox() {
     if (id === "k8s") {
       if (S.col?.id === "k8s") return;
       resetChat();
-      loadCollection();
+      void loadCollection();
     } else if (S.up && S.col?.id !== S.up.col.id) {
       resetChat();
       S.srcError = null;
@@ -263,7 +263,7 @@ export default function GlassBox() {
     S.msgs.pop();
     const u = S.msgs.pop();
     S.busy = false; S.q = null; render();
-    if (u && u.role === "u") ask(u.text);
+    if (u && u.role === "u") void ask(u.text);
   };
 
   /* ---------- citations ---------- */
@@ -371,7 +371,7 @@ export default function GlassBox() {
     document.addEventListener("focusin", onFocusIn);
     document.addEventListener("focusout", onFocusOut);
     document.addEventListener("click", onClick);
-    L().loadCollection();
+    void L().loadCollection();
     return () => {
       clearInterval(tick);
       removeEventListener("keydown", onKey);

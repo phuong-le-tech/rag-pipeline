@@ -24,7 +24,7 @@ const collSub = (c: { docs: number; total: number }) => `${c.docs.toLocaleString
 export function SourcePanel({ S, A }: P) {
   const busy = S.phase === "ingesting" || S.busy;
   const fileIn = useRef<HTMLInputElement>(null);
-  const take = (f?: File) => { if (f && !busy) A.upload(f); };
+  const take = (f?: File) => { if (f && !busy) void A.upload(f); };
   return (
     <section className="panel" id="p-src" aria-labelledby="h-src">
       <div className="ph"><span className="num">01</span><h2 id="h-src">Source</h2></div>
@@ -41,7 +41,7 @@ export function SourcePanel({ S, A }: P) {
         <form className="paste" onSubmit={(e) => {
           e.preventDefault();
           const t = String(new FormData(e.currentTarget).get("text") || "").trim();
-          if (t && !busy) { const f = e.currentTarget; A.upload(t).then((ok) => ok && f.reset()); }
+          if (t && !busy) { const f = e.currentTarget; void A.upload(t).then((ok) => ok && f.reset()); }
         }}>
           <label className="lbl" htmlFor="paste-in">Or paste text</label>
           <textarea id="paste-in" name="text" rows={4} spellCheck={false} disabled={busy} placeholder="# Notes&#10;Paste Markdown or plain text here" />
