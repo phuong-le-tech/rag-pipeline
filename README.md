@@ -17,6 +17,8 @@ backed by an evaluation on 94 reviewed questions.
 - **Cited answers with refusal**: every `[n]` is validated against the passages sent to the
   model; 0 invented citations, 14/15 unanswerable questions refused
 - **Glass-box UI**: each stage streams over server-sent events with its hits, scores and timing
+- **Opt-in agent mode**: `rag ask --agent` lets the model choose its searches; measured against
+  the pipeline below
 - **Production-ready API**: rate limiting, daily LLM budget, concurrency cap, CORS allowlist,
   CSP, no personal data stored; Docker image with models baked in
 - **Runs on free tiers**: local embeddings and reranker (no key), free LLM via OpenRouter
@@ -82,6 +84,46 @@ Claude Sonnet, 94 answerable + 15 unanswerable questions):
 | Answers with an invented citation | 0.00 |
 | Refused on unanswerable / false-premise questions | 14 / 15 |
 | Refused although answerable (retrieval misses) | 0.07 |
+
+### Pipeline vs agent
+
+Same 94 answerable and 15 unanswerable questions, same retrieval (hybrid+rerank, max 1/page), same
+answer model (Nemotron 3 Super, free) and same judge (`dots-3-note-preview`, free, via OpenRouter).
+The agent may search up to 4 times per question; the pipeline searches once. The judge differs
+from the Claude Sonnet table above, so these judged numbers are not comparable with it.
+
+| Metric | Pipeline | Agent |
+|---|---:|---:|
+| Answer rate | 0.926 | 0.989 |
+| False refusals (answerable, refused) | 0.074 (7/94) | 0.011 (1/94) |
+| Faithfulness | 0.886 | 0.882 |
+| Correct (yes) | 0.798 | 0.844 |
+| Correct (partial) | 0.131 | 0.122 |
+| Citation coverage (sentences with a citation) | 0.458 | 0.222 |
+| Invented citations | 0.000 | 0.000 |
+| Refused on unanswerable | 15/15 | 15/15 |
+| LLM calls per question | 1.0 | 2.5 |
+| Searches per question | 1 fixed (not a tool call) | 1.5 |
+| Tokens per question (in + out) | 1,886 (1,500 + 385) | 5,374 (4,587 + 787) |
+| Latency p50 (s) | 5.0 | 11.2 |
+| Latency p95 (s) | 10.9 | 30.3 |
+
+By question origin (correct = yes, over the graded answers; false refusals over the 25 or 69
+questions):
+
+| Origin | Correct (yes): pipeline | Correct (yes): agent | False refusals: pipeline | False refusals: agent |
+|---|---:|---:|---:|---:|
+| Hand-written (25) | 0.727 | 0.792 | 0.080 | 0.000 |
+| LLM-drafted (69) | 0.823 | 0.864 | 0.072 | 0.014 |
+
+The agent recovers refusals: false refusals fall from 7 to 1 of 94, and correct answers rise
+from 0.798 to 0.844 with faithfulness unchanged. It costs about 2.9x the tokens, 2.3x the median
+latency, and half the citation coverage (0.222 against 0.458). The correctness gain is small (about 5
+points on 84 to 90 graded answers, not tested for significance), so the pipeline stays the
+default and agent mode stays opt-in.
+
+Multi-part questions: pending owner review; no numbers yet. Details and the step-limit runs in
+[docs/08-agent.md](docs/08-agent.md).
 
 ## Getting started
 
@@ -276,6 +318,8 @@ Dockerfile, railway.json, docker-compose.yml
   provider may log prompts. Set `RAG_LLM_BACKEND=anthropic` for Claude.
 - **No authentication**: the API is public by design and protected only by the guards above.
 - **Stage events arrive together** once retrieval finishes (~1.5 s), then the answer streams.
+- **Agent mode is opt-in and slower**: median latency about 11 s against 5 s, and its citations
+  are sparser (22% of sentences cited against 46% for the pipeline).
 
 ## Credits
 

@@ -170,6 +170,24 @@ Pick a judge from a different model family than the generator. An LLM judge tend
 own family's wording as correct and faithful, so a same-family judge can hide the errors you
 are trying to measure.
 
+### Judge change (2026-10-13): a free OpenRouter judge
+
+The owner runs no paid Claude calls, so the answer judge is now `dots-studio/dots-3-note-preview`
+on OpenRouter (free). It comes from a different family than the answer model (Nemotron, NVIDIA),
+so the family rule above still holds. What changes:
+
+- **Judged numbers are not comparable across judges.** The Sonnet table below and the
+  pipeline-vs-agent table in the README and [08-agent.md](08-agent.md) use different judges.
+  Compare within one table only.
+- **Reasoning judges need their own output budget.** dots-3 spends tokens thinking before it writes
+  the JSON. The judge used to share the answer budget (`RAG_LLM_MAX_TOKENS`, default 1,024), so
+  replies were truncated and verdicts lost. `--judge-max-tokens` (default 8192) gives the judge its
+  own budget (commit `c8dad97`).
+- **Candidates rejected.** `gemma-4-31b`: upstream pool returned 429s. `inkling`: 403, usable only
+  from agent harnesses.
+- **Failures are still reported.** dots-3 leaves some verdicts missing; the reports count them as
+  `judge_failures` (see [08-agent.md](08-agent.md#results) for the 2026-10-13 run).
+
 ## Answer-level results (2026-10-11, `rag eval-answers`)
 
 Retrieval: `hybrid+rerank, max 1/page` (the `rag ask` default). Answers:

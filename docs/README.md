@@ -21,7 +21,7 @@ Each chapter follows the same shape:
 | 5 | [Generation: grounded prompts, citations, refusal](05-generation.md) | ✅ |
 | 6 | [Evaluation: golden sets, metrics, ablations](06-evaluation.md) | ✅ |
 | 7 | [Serving: the glass-box UI, API, streaming, deployment](07-serving.md) | 🚧 Phase 5 (live demo; uploads next) |
-| 8 | [Agent mode: the model decides what to search](08-agent.md) | 🚧 Phase 1 done (loop + CLI); evaluation pending |
+| 8 | [Agent mode: the model decides what to search](08-agent.md) | 🚧 Loop, CLI and evaluation done; multi-part questions pending owner review |
 
 Reference:
 
