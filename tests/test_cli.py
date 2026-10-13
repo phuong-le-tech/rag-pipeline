@@ -564,7 +564,7 @@ def answers_run(tmp_path, monkeypatch):
 def test_eval_answers_agent_mode_builds_agent_answerer_with_retrying_llm(answers_run):
     invoke, seen = answers_run
 
-    result = invoke("--mode", "agent", "--k", "3")
+    result = invoke("--mode", "agent")
 
     assert result.exit_code == 0, result.output
     make_llm, search, limits = seen["agent"]
@@ -683,3 +683,33 @@ def test_eval_answers_judge_max_tokens_overrides_the_judge_budget_only(answers_r
     assert seen["evaluate"]["judge"].max_tokens == 2048
     assert [s.llm_max_tokens for s in built] == [1024, 2048]
     assert seen["meta"]["judge_max_tokens"] == 2048
+
+
+def test_eval_answers_llm_failure_prints_resume_hint(answers_run, monkeypatch):
+    invoke, _seen = answers_run
+
+    def fail(*_args, **_kwargs):
+        raise openai.APIConnectionError(request=httpx.Request("POST", "https://x"))
+
+    monkeypatch.setattr(cli, "evaluate_answers", fail)
+
+    result = invoke()
+
+    assert result.exit_code == 1
+    assert "--resume" in result.output
+    assert "-answers.partial.jsonl" in result.output
+
+
+def test_eval_answers_rejects_k_in_agent_mode_before_connecting(answers_run, monkeypatch):
+    invoke, seen = answers_run
+
+    def boom(_settings):
+        raise AssertionError("must not connect to the database")
+
+    monkeypatch.setattr(cli, "connect", boom)
+
+    result = invoke("--mode", "agent", "--k", "3")
+
+    assert result.exit_code == 2
+    assert "--k applies to pipeline mode only" in result.output
+    assert seen["evaluate"] is None

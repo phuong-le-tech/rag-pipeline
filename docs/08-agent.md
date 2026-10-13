@@ -153,6 +153,9 @@ in `judge_failures`; those answers drop out of the correctness denominators.
 2.9x the tokens, 2.3x the median latency, and half the citation coverage. It stays opt-in, and the
 pipeline stays the default.
 
+Latency includes rate-limit backoff from free-tier 429 retries, which hits the agent harder (about
+2.5 model calls per question against one for the pipeline), so the 2.3x median is partly backoff.
+
 **Next.**
 - Citation coverage halved: tighten the citation rule in `AGENT_SYSTEM`
   (`src/rag/agent/prompt.py`), then re-run the same 94 questions before changing anything else.

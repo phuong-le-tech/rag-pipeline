@@ -329,6 +329,8 @@ def eval_answers_cmd(
         raise typer.BadParameter(f"unknown config {config!r}; choose from {list(ABLATIONS)}")
     if mode not in ("pipeline", "agent"):
         raise typer.BadParameter(f"unknown mode {mode!r}; choose pipeline or agent")
+    if mode == "agent" and k is not None:
+        raise typer.BadParameter("--k applies to pipeline mode only; the agent picks k per search")
     settings = Settings()
     timestamp = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     out.mkdir(parents=True, exist_ok=True)
@@ -386,6 +388,8 @@ def eval_answers_cmd(
         except (anthropic.AnthropicError, openai.OpenAIError) as exc:
             typer.secho(f"LLM call failed: {exc}", fg="red", err=True)
             typer.echo(llm_error_hint(exc, settings), err=True)
+            # Re-running without --resume would start a new checkpoint and spend the quota again.
+            typer.echo(f"Resume with: --resume {checkpoint}", err=True)
             raise typer.Exit(1) from exc
 
     ref_file = corpus / "CORPUS_REF"

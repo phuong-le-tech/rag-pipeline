@@ -157,7 +157,7 @@ The flags that matter for a comparison:
   search tool (see [08-agent.md](08-agent.md)). Both write the same metrics, plus calls, tokens,
   latency and cost.
 - `--k N`: passages per search in pipeline mode only (default: the ablation's k). In agent mode
-  the model picks k per search (default 5, max 10), so `--k` does not apply there.
+  the model picks k per search (default 5, max 10), so `--k` is rejected with `--mode agent`.
 - `--judge-model ID`: the judge model, with `--judge-backend` choosing the provider.
 - `--judge-max-tokens N`: the judge's output budget (default 8192). Reasoning judges spend hundreds
   of tokens thinking before the JSON, so a small budget truncates the reply and the judgement is lost.
@@ -185,8 +185,9 @@ so the family rule above still holds. What changes:
   own budget (commit `c8dad97`).
 - **Candidates rejected.** `gemma-4-31b`: upstream pool returned 429s. `inkling`: 403, usable only
   from agent harnesses.
-- **Failures are still reported.** dots-3 leaves some verdicts missing; the reports count them as
-  `judge_failures` (see [08-agent.md](08-agent.md#results) for the 2026-10-13 run).
+- **Failures are still reported.** dots-3 leaves some verdicts missing; missing faithfulness
+  verdicts count as `judge_failures`, while a missing `correct` verdict is not counted there (see
+  [08-agent.md](08-agent.md#results) for the 2026-10-13 run).
 
 ## Answer-level results (2026-10-11, `rag eval-answers`)
 
