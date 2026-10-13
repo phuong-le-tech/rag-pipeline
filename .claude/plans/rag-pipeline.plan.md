@@ -72,10 +72,10 @@ ablation table is the centrepiece of the README.
 - [x] UI shell in `web/`, ported from the Open Design prototype
 - [x] Production v1 (k8s only): API + guards, privacy/legal, Docker + Railway + Vercel runbook (`.claude/plans/production-v1.plan.md`)
 - [x] Pipeline emits structured progress events (stage, progress, timing) usable by CLI and API
-- [ ] `collection` column + retrieval filter: uploads never mix with the k8s index or evals
+- [x] `collection` column + retrieval filter: uploads never mix with the k8s index or evals
 - [ ] Loaders: PDF (pypdf), URL (trafilatura, SSRF-safe: block private IPs, size/time limits), pasted text
 - [x] FastAPI `/ask` streaming with retrieval steps (SSE) — upload/ingest endpoint still to do
-- [ ] UI ingest view: load → clean → chunk → embed (progress) → store, chunk previews
+- [x] UI ingest view: load → clean → chunk → embed (progress) → store, chunk previews
 - [x] UI ask view: query embed, dense/keyword lists, RRF, rerank before/after, streamed answer
 - [x] Clickable [n] citations open the exact passage; invented citations kept as plain text
 - [ ] Prebuilt "Kubernetes docs" collection + link to eval results (interview story)

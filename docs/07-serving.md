@@ -1,8 +1,8 @@
 # 7. Serving: the glass-box UI, API, streaming
 
 > Status: 🚧 the UI in [`web/`](../web/) runs on the **real pipeline** through a FastAPI service
-> ([`src/rag/api/`](../src/rag/api/)) that streams each stage. Kubernetes docs only; uploads are
-> the next Phase 5 step. Deploy runbook: README "Deploy".
+> ([`src/rag/api/`](../src/rag/api/)) that streams each stage. Ask over the Kubernetes docs, or
+> upload a Markdown/text file and watch it being indexed. Deploy runbook: README "Deploy".
 
 ## Concept
 
@@ -134,13 +134,23 @@ browser ──► Vercel (Next.js UI) ──► Railway API (FastAPI + ONNX mode
 
 | File | What |
 |---|---|
-| `lib/api.ts` | `getCollection`, `askStream` (fetch + SSE parser), `toChunk`, `splitCitations` |
-| `components/GlassBox.tsx` | maps each SSE event onto the view-model; errors become messages, never a frozen screen |
+| `lib/api.ts` | `getCollection`, `askStream` / `uploadStream` (fetch + SSE parser), `ingestUpdate` (server stage to card), `toChunk`, `splitCitations` |
+| `components/GlassBox.tsx` | maps each SSE event onto the view-model; errors become messages, never a frozen screen; holds the one upload in memory |
 | `components/Panels.tsx`, `Overlays.tsx` | Source, Pipeline, Ask, popovers, settings, ⌘K palette |
 | `app/privacy`, `app/legal` | what is processed and stored, publisher, hosting, content credits |
 
+The Source panel takes a dropped or chosen `.md`/`.txt` file (a button, so the keyboard works) or
+pasted text. The server's five ingest stages fill the four Pipeline cards (`load` + `clean` are
+"Parse"), the first chunk previews open under the Chunk card, and the collection menu then lists
+"Kubernetes docs" plus the upload; picking either clears the conversation, because an answer
+belongs to the collection it was asked of. Asks pass the upload id as `collection`. The id lives
+only in the page's memory: reloading forgets it (the server deletes the data after 24 h anyway).
+413, 422, 429 and 503 each get their own message.
+
 ## Trade-offs
 
+- **One upload per session, in memory.** Simple and private, but a reload loses the handle.
+- **Previews are the first 3 chunks**, what the server sends, not the whole chunk list.
 - **Stages arrive together.** The retriever runs inside one request; the stage events are sent
   as soon as retrieval finishes (~1.5 s), then tokens stream. Timings shown are real.
 - **In-memory guards** mean one replica. Fine for a side project; Redis when traffic grows.
@@ -159,6 +169,8 @@ cd web && npm run dev                # http://localhost:3000
 - Ask "How do I roll back a failed Deployment?", hover `[1]`, compare the Rerank list with Fusion.
 - Ask "Who won the 2018 World Cup?": the model declines and Cite is skipped.
 - Turn rerank off (`R`) and ask again: which passages change, and how much faster is it?
+- Drop a short `.md`, watch Parse to Index fill, open the chunks, ask about it, then switch back
+  to "Kubernetes docs" in the collection menu.
 - Stop the API and reload: the UI says the service is unavailable.
 - `curl -N -X POST localhost:8000/api/ask -H 'content-type: application/json' -d '{"question":"What is a Pod?"}'`
   shows the raw event stream.

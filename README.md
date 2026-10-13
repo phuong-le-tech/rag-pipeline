@@ -16,7 +16,9 @@ backed by an evaluation on 94 reviewed questions.
 - **Cross-encoder reranking** and one-chunk-per-page diversity (+0.15 Hit@5 over plain hybrid)
 - **Cited answers with refusal**: every `[n]` is validated against the passages sent to the
   model; 0 invented citations, 14/15 unanswerable questions refused
-- **Glass-box UI**: each stage streams over server-sent events with its hits, scores and timing
+- **Glass-box UI**: each stage streams over server-sent events with its hits, scores and timing;
+  drop a Markdown file or paste text to watch it ingested (load, clean, chunk, embed, store) and
+  ask questions over it (kept 24 h, then deleted)
 - **Opt-in agent mode**: a hand-written tool-calling loop (no framework) where the model decides
   what to search and how often; on the same 94 + 15 questions it cuts false refusals from 7 to 1
   for ~2.9× the tokens, so the fixed pipeline stays the default

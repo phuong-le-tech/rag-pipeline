@@ -1,15 +1,27 @@
 "use client";
 import { useEffect, useReducer, useRef } from "react";
-import { type ApiHit, ApiError, askStream, getCollection, type SSE, splitCitations, toChunk } from "@/lib/api.ts";
-import type { Retrieval, Scored, StageState } from "@/lib/types.ts";
+import { type ApiHit, ApiError, askStream, getCollection, ingestUpdate, type SSE, splitCitations, toChunk, uploadStream } from "@/lib/api.ts";
+import type { Collection, Retrieval, Scored, StageState } from "@/lib/types.ts";
 import { Icon } from "./Icons";
 import { type Cmd, CitePopover, CollMenu, Palette, paletteItems, SettingsMenu } from "./Overlays";
 import { type Actions, AskPanel, PipelinePanel, RunStats, SourcePanel } from "./Panels";
-import { freshIng, type Msg, newStore, type QKey, type Store } from "./store";
+import { freshIng, type Ing, type Msg, newStore, type QKey, type Store } from "./store";
 
 type Ans = Extract<Msg, { role: "a" }>;
 
 const UNAVAILABLE = "Service unavailable, try again later.";
+
+const uploadError = (e: unknown) => {
+  const status = e instanceof ApiError ? e.status : 0;
+  if (status === 413) return "That file is over 1 MB. Split it or paste a shorter text.";
+  if (status === 415) return "Only Markdown (.md) and plain text (.txt) files are supported.";
+  if (status === 422) return "The file must be UTF-8 text with something in it.";
+  if (status === 429) return `Too many requests in a minute. Retry in ${(e as ApiError).retryAfter || 60} s.`;
+  if (status === 503) return "The server is busy. Retry in a few seconds.";
+  return UNAVAILABLE;
+};
+
+const ING_ORDER = ["parse", "chunk", "embed", "index"] as const;
 
 export default function GlassBox() {
   const sRef = useRef<Store>(null as unknown as Store);
@@ -43,6 +55,7 @@ export default function GlassBox() {
 
   /* ---------- collection: the Kubernetes index, built ahead of time ---------- */
   async function loadCollection() {
+    S.srcError = null;
     S.phase = "ingesting";
     S.ing = freshIng();
     render();
@@ -65,6 +78,76 @@ export default function GlassBox() {
       S.ing = null;
     }
     render();
+  }
+
+  /* ---------- upload: a visitor's own document, kept in memory only ---------- */
+  const resetChat = () => { runId.current++; S.msgs = []; S.q = null; S.stats = null; S.chunks = new Map(); S.chunkOpen = false; S.busy = false; };
+
+  async function upload(input: File | string) {
+    if (S.phase === "ingesting" || S.busy) return;
+    const prev = S.col;
+    closeAll();
+    resetChat();
+    S.srcError = null;
+    S.phase = "ingesting";
+    const ing: Ing = (S.ing = freshIng());
+    ing.parse = { st: "running", t0: performance.now() };
+    render();
+    let name = typeof input === "string" ? "Pasted text" : input.name;
+    let previews: Collection["chunks"] = [];
+    let ok = false;
+    const onEvent = (e: SSE) => {
+      const u = ingestUpdate(e);
+      if (u) {
+        const was = ing[u.stage];
+        ing[u.stage] = u.done ? { st: "done", ms: (was.ms || 0) + u.ms, key: u.key } : { st: "running", ms: u.ms, key: u.key, t0: performance.now() };
+        const next = ING_ORDER[ING_ORDER.indexOf(u.stage) + 1];
+        if (u.done && next) ing[next] = { st: "running", t0: performance.now() };
+        S.fresh = u.stage;
+        if (e.data.title) name = e.data.title;
+        if (e.data.previews) previews = e.data.previews.map((p: { heading: string; content: string }, i: number) => ({ id: `preview-${i}`, page: "", url: "", path: p.heading ? p.heading.split(" > ") : [name], text: p.content, chars: p.content.length }));
+      } else if (e.event === "done") {
+        ok = true;
+        const col: Collection = { id: e.data.collection, name, chunks: previews, outline: [], total: e.data.chunks, docs: e.data.docs };
+        S.up = { col, ing: { ...ing } };
+        S.col = col;
+        S.chunkOpen = previews.length > 0;
+        S.phase = "ready";
+        announce(`${name} indexed in ${e.data.chunks} chunks. You can ask a question.`);
+      } else if (e.event === "error") {
+        S.srcError = e.data.message;
+      }
+      render();
+    };
+    try {
+      await uploadStream(input, onEvent);
+    } catch (e) {
+      S.srcError = uploadError(e);
+    }
+    if (!ok) {
+      S.srcError ||= UNAVAILABLE;
+      ING_ORDER.forEach((k) => { if (ing[k].st === "running") ing[k] = { st: "error", key: "Failed" }; });
+      S.col = prev;
+      S.phase = S.col ? "ready" : "empty";
+      announce(S.srcError);
+    }
+    render();
+  }
+
+  function pick(id: "k8s" | "up") {
+    if (S.phase === "ingesting" || S.busy) return;
+    if (id === "k8s") {
+      if (S.col?.id === "k8s") return;
+      resetChat();
+      loadCollection();
+    } else if (S.up && S.col?.id !== S.up.col.id) {
+      resetChat();
+      S.srcError = null;
+      S.col = S.up.col;
+      S.ing = S.up.ing;
+      S.phase = "ready";
+      render();
+    }
   }
 
   /* ---------- ask ---------- */
@@ -150,7 +233,7 @@ export default function GlassBox() {
     };
 
     try {
-      await askStream({ question: text, k: S.set.k, rerank: S.set.rerank, max_one_per_page: S.set.one }, onEvent);
+      await askStream({ question: text, k: S.set.k, rerank: S.set.rerank, max_one_per_page: S.set.one, collection: S.col!.id === "k8s" ? undefined : S.col!.id }, onEvent);
       if (live() && m.status === "streaming") { m.status = "error"; m.message = UNAVAILABLE; }
     } catch (e) {
       if (!live()) return;
@@ -202,7 +285,7 @@ export default function GlassBox() {
 
   const A: Actions = {
     ask, retry, pin,
-    reload: loadCollection,
+    pick, upload,
     toggleChunks: () => { S.chunkOpen = !S.chunkOpen; render(); },
   };
 
