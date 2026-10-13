@@ -23,6 +23,7 @@ export type PopState = { id: string; n: string; anchor: HTMLElement; pinned: boo
 // Mutable view-model, mirrored from the prototype: actions mutate it, then call render().
 export type Store = {
   col: Collection | null;
+  up: { col: Collection; ing: Ing } | null; // the session's one upload, memory only
   info: CollectionInfo | null;
   apiDown: boolean;
   chunks: Map<string, Chunk>; // every passage seen in the current query, for citations
@@ -46,7 +47,7 @@ export type Store = {
 };
 
 export const newStore = (): Store => ({
-  col: null, info: null, apiDown: false, chunks: new Map(), phase: "empty", srcError: null, ing: null, chunkOpen: false,
+  col: null, up: null, info: null, apiDown: false, chunks: new Map(), phase: "empty", srcError: null, ing: null, chunkOpen: false,
   q: null, msgs: [], busy: false, fast: false, hl: null, fresh: null, stats: null,
   set: { k: 5, rerank: true, one: true }, // same defaults as `rag ask` and the API
   theme: "dark", menu: null, pal: { open: false, query: "", sel: 0 }, pop: null, sr: "",

@@ -5,7 +5,7 @@ export const API_URL = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:800
 
 export type ApiHit = { id: number; heading: string; title: string; url: string; content: string; score: number };
 export type CollectionInfo = { name: string; docs: number; chunks: number; llm_model: string; embedding_model: string };
-export type AskBody = { question: string; k: number; rerank: boolean; max_one_per_page: boolean };
+export type AskBody = { question: string; k: number; rerank: boolean; max_one_per_page: boolean; collection?: string };
 export type ApiSource = { n: number; id: number };
 export type SSE = { event: string; data: any };
 
@@ -63,13 +63,8 @@ export async function getCollection(): Promise<CollectionInfo> {
   return r.json();
 }
 
-export async function askStream(body: AskBody, onEvent: (e: SSE) => void, signal?: AbortSignal): Promise<void> {
-  const r = await fetch(`${API_URL}/api/ask`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-    signal,
-  });
+async function streamSSE(path: string, init: RequestInit, onEvent: (e: SSE) => void): Promise<void> {
+  const r = await fetch(`${API_URL}${path}`, { method: "POST", ...init });
   if (!r.ok || !r.body) {
     const j = await r.json().catch(() => ({}));
     throw new ApiError(r.status, j.error || "unavailable", j.retry_after);
@@ -82,5 +77,33 @@ export async function askStream(body: AskBody, onEvent: (e: SSE) => void, signal
     const { events, rest } = parseSSE(buf + value);
     buf = rest;
     events.forEach(onEvent);
+  }
+}
+
+export const askStream = (body: AskBody, onEvent: (e: SSE) => void, signal?: AbortSignal) =>
+  streamSSE("/api/ask", { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal }, onEvent);
+
+// A file goes up as multipart (the browser sets the boundary), pasted text as JSON.
+export function uploadStream(input: File | string, onEvent: (e: SSE) => void, signal?: AbortSignal): Promise<void> {
+  if (typeof input === "string") {
+    return streamSSE("/api/collections", { headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: input }), signal }, onEvent);
+  }
+  const form = new FormData();
+  form.append("file", input);
+  return streamSSE("/api/collections", { body: form, signal }, onEvent);
+}
+
+// The server reports five ingest stages; the UI shows four cards (load + clean are "Parse").
+export type IngestUpdate = { stage: "parse" | "chunk" | "embed" | "index"; done: boolean; ms: number; key: string };
+export function ingestUpdate({ event, data }: SSE): IngestUpdate | null {
+  if (event !== "stage") return null;
+  const n = (v: number) => v.toLocaleString("en-US");
+  switch (data.name) {
+    case "load": return { stage: "parse", done: false, ms: data.ms, key: `${n(data.chars)} chars` };
+    case "clean": return { stage: "parse", done: true, ms: data.ms, key: data.title };
+    case "chunk": return { stage: "chunk", done: true, ms: data.ms, key: `${n(data.chunks)} chunks` };
+    case "embed": return { stage: "embed", done: true, ms: data.ms, key: `${data.dim}-dim vectors` };
+    case "store": return { stage: "index", done: true, ms: data.ms, key: "stored in pgvector + full-text" };
+    default: return null;
   }
 }

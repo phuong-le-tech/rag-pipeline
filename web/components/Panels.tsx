@@ -1,5 +1,5 @@
 "use client";
-import type { ReactNode } from "react";
+import { type ReactNode, useRef } from "react";
 import type { Chunk, StageState } from "@/lib/types.ts";
 import { Icon, Md } from "./Icons";
 import { cx, fmtMs, type IngKey, type Msg, type QKey, type Store, STL } from "./store";
@@ -7,7 +7,8 @@ import { cx, fmtMs, type IngKey, type Msg, type QKey, type Store, STL } from "./
 const label = (c: Chunk) => c.path.slice(-2).join(" › ");
 
 export type Actions = {
-  reload: () => void;
+  pick: (id: "k8s" | "up") => void;
+  upload: (input: File | string) => Promise<boolean>;
   toggleChunks: () => void;
   ask: (text: string) => void;
   retry: () => void;
@@ -18,21 +19,47 @@ type P = { S: Store; A: Actions; h: (id: string) => string };
 const Stt = ({ st }: { st: StageState }) => (<span className="stt"><i className="dot" />{STL[st]}</span>);
 
 /* ---------- 01 Source ---------- */
+const collSub = (c: { docs: number; total: number }) => `${c.docs.toLocaleString("en-US")} docs · ${c.total.toLocaleString("en-US")} chunks`;
+
 export function SourcePanel({ S, A }: P) {
+  const busy = S.phase === "ingesting" || S.busy;
+  const fileIn = useRef<HTMLInputElement>(null);
+  const take = (f?: File) => { if (f && !busy) void A.upload(f); };
   return (
     <section className="panel" id="p-src" aria-labelledby="h-src">
       <div className="ph"><span className="num">01</span><h2 id="h-src">Source</h2></div>
       <div className="pb src-b" id="src">
-        <div className="drop busy" role="note">
-          <span className="dz-t">Uploads are coming soon</span>
-          <span className="dz-s">This demo answers from the Kubernetes documentation.</span>
-        </div>
+        <button className="drop" type="button" disabled={busy} onClick={() => fileIn.current?.click()}
+          onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add("over"); }}
+          onDragLeave={(e) => e.currentTarget.classList.remove("over")}
+          onDrop={(e) => { e.preventDefault(); e.currentTarget.classList.remove("over"); take(e.dataTransfer.files[0]); }}>
+          <span className="dz-t">Drop a Markdown file, or press to choose</span>
+          <span className="dz-s">.md or .txt, up to 1 MB. Kept for up to 24 hours, then deleted.</span>
+        </button>
+        <input ref={fileIn} type="file" accept=".md,.markdown,.txt,text/markdown,text/plain" hidden aria-label="Choose a Markdown or text file"
+          onChange={(e) => { take(e.target.files?.[0]); e.target.value = ""; }} />
+        <form className="paste" onSubmit={(e) => {
+          e.preventDefault();
+          const t = String(new FormData(e.currentTarget).get("text") || "").trim();
+          if (t && !busy) { const f = e.currentTarget; void A.upload(t).then((ok) => ok && f.reset()); }
+        }}>
+          <label className="lbl" htmlFor="paste-in">Or paste text</label>
+          <textarea id="paste-in" name="text" rows={4} spellCheck={false} disabled={busy} placeholder="# Notes&#10;Paste Markdown or plain text here" />
+          <button className="btn" type="submit" disabled={busy}>Index this text</button>
+        </form>
+        {S.srcError && <div className="errbox" role="alert"><div className="et"><Icon name="alert" /><span>{S.srcError}</span></div></div>}
         <div className="od-stack" style={{ "--od-gap": "12px" } as React.CSSProperties}>
           <div className="or">collection</div>
-          <button className="collbtn" type="button" onClick={A.reload} aria-pressed={S.col?.id === "k8s"}>
+          <button className="collbtn" type="button" disabled={busy} onClick={() => A.pick("k8s")} aria-pressed={S.col?.id === "k8s"}>
             <span className="t">Kubernetes docs</span>
-            <span className="s mono">{S.col ? `${S.col.docs.toLocaleString("en-US")} docs · ${S.col.total.toLocaleString("en-US")} chunks` : S.apiDown ? "API unreachable · retry" : "loading…"}</span>
+            <span className="s mono">{S.info && S.col?.id === "k8s" ? collSub(S.col) : S.apiDown ? "API unreachable · retry" : S.info ? "switch back" : "loading…"}</span>
           </button>
+          {S.up && (
+            <button className="collbtn" type="button" disabled={busy} onClick={() => A.pick("up")} aria-pressed={S.col?.id === S.up.col.id}>
+              <span className="t od-truncate">{S.up.col.name}</span>
+              <span className="s mono">{collSub(S.up.col)} · deleted after 24 h</span>
+            </button>
+          )}
         </div>
       </div>
     </section>
@@ -55,7 +82,7 @@ function IngCard({ S, A, i, k, name }: P & { i: number; k: IngKey; name: string 
       <div className="st-top"><span className="num">0{i + 1}</span><h3 className="nm">{name}</h3></div>
       {keyTxt}
       <div className="od-row"><Stt st={st} /><span className="od-fill" /><span className="ms mono od-fixed">{ms}</span></div>
-      {k === "embed" && st === "running" && (
+      {k === "embed" && st === "running" && o.frac != null && (
         <>
           <div className="prog"><i style={{ "--v": o.frac || 0 } as React.CSSProperties} /></div>
           <div className="cnt mono">{Math.round((o.frac || 0) * total).toLocaleString("en-US")} / {total.toLocaleString("en-US")}</div>
@@ -76,7 +103,7 @@ function Explain() {
   return (
     <div className="explain">
       <h1>See every step between a file and an answer.</h1>
-      <div className="zr"><span className="n">01</span><div><b>Source</b><span className="d">The Kubernetes documentation, indexed ahead of time.</span></div></div>
+      <div className="zr"><span className="n">01</span><div><b>Source</b><span className="d">Drop a Markdown file, paste text, or use the Kubernetes docs.</span></div></div>
       <div className="zr"><span className="n">02</span><div><b>Pipeline</b><span className="d">Watch each stage run, with timings, scores and rank changes.</span></div></div>
       <div className="zr"><span className="n">03</span><div><b>Ask</b><span className="d">Every claim cites a passage. Hover a citation to trace it back.</span></div></div>
     </div>
@@ -224,7 +251,7 @@ export function PipelinePanel(p: P) {
       <div className="pipe-b" id="pipe">
         <div>{S.phase === "empty" && !S.q && <Explain />}</div>
         <div>
-          <div className="sec-h"><h3 className="lbl">Ingest</h3><span className="cap">{c ? "Kubernetes docs · indexed ahead of time" : ""}</span></div>
+          <div className="sec-h"><h3 className="lbl">Ingest</h3><span className="cap">{c && S.phase === "ready" ? (c.id === "k8s" ? "Kubernetes docs · indexed ahead of time" : `${c.name} · deleted after 24 h`) : ""}</span></div>
           <div className="ing-grid">{ING.map(([k, name], i) => <IngCard key={k} {...p} i={i} k={k} name={name} />)}</div>
           {S.chunkOpen && S.ing?.chunk.st === "done" && c && (
             <div className="strip-wrap" id="strip">
@@ -237,7 +264,7 @@ export function PipelinePanel(p: P) {
                   </article>
                 ))}
               </div>
-              <p className="strip-cap">{c.id === "k8s" ? `Showing ${c.chunks.length} of ${c.total.toLocaleString("en-US")} chunks (retrievable slice).` : `${c.chunks.length} chunks split on headings.`}</p>
+              <p className="strip-cap">{c.id === "k8s" ? `Showing ${c.chunks.length} of ${c.total.toLocaleString("en-US")} chunks (retrievable slice).` : `Showing the first ${c.chunks.length} of ${c.total.toLocaleString("en-US")} chunks.`}</p>
             </div>
           )}
         </div>
@@ -317,7 +344,7 @@ export function AskPanel({ S, A, h, chatRef, inputRef }: P & { chatRef: React.Re
   let body: ReactNode;
   if (S.msgs.length) body = S.msgs.map((m, i) => <Message key={i} m={m} S={S} A={A} h={h} />);
   else if (ok) {
-    const qs = ["How do I roll back a failed Deployment?", "What's the difference between liveness and readiness probes?", "Why was my container OOMKilled?", "Who won the 2018 World Cup?"];
+    const qs = S.col!.id !== "k8s" ? ["Summarize this document.", "What are the key points?", "Who won the 2018 World Cup?"] : ["How do I roll back a failed Deployment?", "What's the difference between liveness and readiness probes?", "Why was my container OOMKilled?", "Who won the 2018 World Cup?"];
     body = (
       <div className="empty-ask">
         <h3>Ask about {S.col!.name}</h3>
