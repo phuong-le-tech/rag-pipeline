@@ -1,4 +1,4 @@
-# 7. Serving: the glass-box UI, API, streaming
+# 7. Serving: the web UI, API, streaming
 
 > Status: 🚧 the UI in [`web/`](../web/) runs on the **real pipeline** through a FastAPI service
 > ([`src/rag/api/`](../src/rag/api/)) that streams each stage. Kubernetes docs only; uploads are
