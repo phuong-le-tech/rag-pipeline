@@ -8,7 +8,7 @@ const label = (c: Chunk) => c.path.slice(-2).join(" › ");
 
 export type Actions = {
   pick: (id: "k8s" | "up") => void;
-  upload: (input: File | string) => void;
+  upload: (input: File | string) => Promise<boolean>;
   toggleChunks: () => void;
   ask: (text: string) => void;
   retry: () => void;
@@ -41,7 +41,7 @@ export function SourcePanel({ S, A }: P) {
         <form className="paste" onSubmit={(e) => {
           e.preventDefault();
           const t = String(new FormData(e.currentTarget).get("text") || "").trim();
-          if (t && !busy) { A.upload(t); e.currentTarget.reset(); }
+          if (t && !busy) { const f = e.currentTarget; A.upload(t).then((ok) => ok && f.reset()); }
         }}>
           <label className="lbl" htmlFor="paste-in">Or paste text</label>
           <textarea id="paste-in" name="text" rows={4} spellCheck={false} disabled={busy} placeholder="# Notes&#10;Paste Markdown or plain text here" />

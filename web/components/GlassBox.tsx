@@ -83,8 +83,8 @@ export default function GlassBox() {
   /* ---------- upload: a visitor's own document, kept in memory only ---------- */
   const resetChat = () => { runId.current++; S.msgs = []; S.q = null; S.stats = null; S.chunks = new Map(); S.chunkOpen = false; S.busy = false; };
 
-  async function upload(input: File | string) {
-    if (S.phase === "ingesting" || S.busy) return;
+  async function upload(input: File | string): Promise<boolean> {
+    if (S.phase === "ingesting" || S.busy) return false;
     const prev = S.col;
     closeAll();
     resetChat();
@@ -132,6 +132,7 @@ export default function GlassBox() {
       announce(S.srcError);
     }
     render();
+    return ok;
   }
 
   function pick(id: "k8s" | "up") {
