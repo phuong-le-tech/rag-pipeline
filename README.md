@@ -17,8 +17,9 @@ backed by an evaluation on 94 reviewed questions.
 - **Cited answers with refusal**: every `[n]` is validated against the passages sent to the
   model; 0 invented citations, 14/15 unanswerable questions refused
 - **Glass-box UI**: each stage streams over server-sent events with its hits, scores and timing
-- **Opt-in agent mode**: `rag ask --agent` lets the model choose its searches; measured against
-  the pipeline below
+- **Opt-in agent mode**: a hand-written tool-calling loop (no framework) where the model decides
+  what to search and how often; on the same 94 + 15 questions it cuts false refusals from 7 to 1
+  for ~2.9× the tokens, so the fixed pipeline stays the default
 - **Production-ready API**: rate limiting, daily LLM budget, concurrency cap, CORS allowlist,
   CSP, no personal data stored; Docker image with models baked in
 - **Runs on free tiers**: local embeddings and reranker (no key), free LLM via OpenRouter
@@ -43,6 +44,11 @@ OFFLINE   Kubernetes docs ─► loader (frontmatter, Hugo shortcodes, HTML → 
 ONLINE    question ─► dense search ─┐
                      keyword search ─┴► RRF fusion ─► cross-encoder rerank ─► max 1 chunk per page
           ─► top 5 passages ─► grounded prompt ─► LLM (streamed) ─► answer + validated [n] citations
+
+AGENT     question ─► LLM ─► search_docs(query, k) ─► same retrieval as above ─► numbered passages
+(opt-in)       ▲                                                                      │
+               └──────────── next search, until it answers (max 4 steps) ◄────────────┘
+          ─► answer validated against every passage seen during the loop
 
 EVAL      golden set (94 reviewed questions) ─► hit@k / recall@k / MRR / nDCG per configuration
           unanswerable set (15) + LLM judge ─► faithfulness, correctness, citations, refusals
@@ -300,7 +306,10 @@ src/rag/
   embed/               Embedder protocol: local (fastembed), OpenAI, fake
   retrieval/           search.py (dense, keyword), fusion.py (RRF, per-page cap),
                        rerank.py (cross-encoder), rewrite.py (LLM query rewrite), retriever.py
-  generate/            prompt.py, citations.py, generator.py (Claude, OpenAI-compatible), answer.py
+  generate/            prompt.py, citations.py, generator.py (Claude, OpenAI-compatible, tool calls),
+                       answer.py
+  agent/               loop.py (tool-calling loop, passage registry, limits), tools.py (search_docs),
+                       prompt.py
   evals/               metrics.py, golden.py, runner.py, drafting.py, review.py, judge.py, answers.py
   config.py, db.py, schema.sql, cli.py
 web/                   Next.js UI: components/, lib/api.ts (SSE client), app/privacy, app/legal
