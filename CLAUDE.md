@@ -37,7 +37,7 @@ uv run rag search "QUERY" [--mode M] [--rerank]   # ranked passages, no LLM
 uv run rag ask "QUESTION" [--rewrite]     # cited answer (defaults: hybrid+rerank+max 1/page)
 uv run rag ask "QUESTION" --agent         # agent mode: LLM decides what to search (prints steps)
 uv run rag eval [--config NAME] [--limit N]   # retrieval metrics, split by question origin
-uv run rag eval-answers [--config NAME] [--judge-backend B]   # faithfulness, citations, refusal
+uv run rag eval-answers [--config NAME] [--judge-backend B] [--mode pipeline|agent] [--judge-model M] [--judge-max-tokens N] [--resume F]   # faithfulness, citations, refusal
 uv run rag draft-questions --n 100 --seed S   # resumable
 uv run rag review-drafts                  # human review: y/e/n/q, resumable, appends to golden
 uv run ruff format . && uv run ruff check --no-cache .   # --no-cache: match CI exactly
@@ -146,6 +146,7 @@ Long LLM or ingest jobs run in the background with output to `data/*.log`; never
 - ONNX can oversubscribe the CPU (load average 40+): set `RAG_EMBEDDING_THREADS`.
 - OpenRouter free models: shared upstream pools return 429; the account-wide daily cap is
   50 requests without credits, 1,000 with credits. Nemotron 3 Super is the working default.
+- Reasoning judge models need a large output budget (`--judge-max-tokens`, default 8192) or their JSON is truncated.
 - LLM judges sometimes emit invalid JSON: `parse_judgement` re-asks, then repairs, then
   validates shape; always report judge failures.
 - API guards (rate limit, daily budget, concurrency) are in process memory: run one replica.

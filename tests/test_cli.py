@@ -499,3 +499,217 @@ def test_ingest_exits_when_no_documents(tmp_path):
 
     assert result.exit_code == 1
     assert "No documents" in result.output
+
+
+@pytest.fixture
+def answers_run(tmp_path, monkeypatch):
+    """eval-answers with no database, network or real judging; records what it was given."""
+    golden = tmp_path / "golden.jsonl"
+    golden.write_text(
+        '{"id": "q1", "question": "revert a deployment", "relevant_sources": '
+        '["tasks/rollback.md"], "reference_answer": "rollout undo", "origin": "human"}\n'
+    )
+    unanswerable = tmp_path / "u.jsonl"
+    unanswerable.write_text('{"id": "u1", "question": "bake bread", "origin": "human"}\n')
+    seen: dict = {"meta": None, "agent": None, "evaluate": None}
+
+    class Retriever:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+    def spy_agent_answerer(make_llm, search, limits):
+        seen["agent"] = (make_llm, search, limits)
+        return lambda question: None
+
+    def spy_evaluate(golden_items, refuse_items, answerer, judge, **kwargs):
+        seen["evaluate"] = {"answerer": answerer, "judge": judge, **kwargs}
+        return "report"
+
+    def spy_write(out_dir, report, meta):
+        seen["meta"] = meta
+        return out_dir / "saved.json"
+
+    monkeypatch.setenv("RAG_EMBEDDING_BACKEND", "fake")
+    monkeypatch.setenv("RAG_EMBEDDING_DIM", "8")
+    monkeypatch.setenv("RAG_LLM_BACKEND", "fake")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    monkeypatch.setattr(cli, "connect", lambda _settings: contextlib.nullcontext(object()))
+    monkeypatch.setattr(cli, "register_vector", lambda _conn: None)
+    monkeypatch.setattr(cli, "Retriever", Retriever)
+    monkeypatch.setattr(cli, "make_reranker", lambda _settings: None)
+    monkeypatch.setattr(cli, "make_embedder", lambda _settings: object())
+    monkeypatch.setattr(cli, "agent_answerer", spy_agent_answerer)
+    monkeypatch.setattr(cli, "evaluate_answers", spy_evaluate)
+    monkeypatch.setattr(cli, "answers_markdown", lambda _report: "table")
+    monkeypatch.setattr(cli, "write_answer_results", spy_write)
+
+    def invoke(*extra):
+        args = [
+            "eval-answers",
+            "--golden",
+            str(golden),
+            "--unanswerable",
+            str(unanswerable),
+            "--out",
+            str(tmp_path / "results"),
+            "--corpus",
+            str(tmp_path),
+            *extra,
+        ]
+        return runner.invoke(cli.app, args)
+
+    return invoke, seen
+
+
+def test_eval_answers_agent_mode_builds_agent_answerer_with_retrying_llm(answers_run):
+    invoke, seen = answers_run
+
+    result = invoke("--mode", "agent")
+
+    assert result.exit_code == 0, result.output
+    make_llm, search, limits = seen["agent"]
+    assert isinstance(make_llm(), cli.RetryingGenerator)
+    assert limits == cli.agent_limits(Settings())
+    assert seen["evaluate"]["answerer"] is not None
+    assert seen["meta"]["mode"] == "agent"
+    assert seen["meta"]["k"] is None
+    assert seen["meta"]["agent_k"] == "model-chosen per call (default 5, max 10)"
+    assert seen["meta"]["agent_llm"] == "fake"
+    assert seen["meta"]["agent_limits"] == {
+        "max_steps": 4,
+        "timeout_s": 90.0,
+        "max_total_tokens": 30000,
+    }
+
+
+def test_eval_answers_k_sets_the_pipeline_config_k(answers_run):
+    invoke, seen = answers_run
+
+    result = invoke("--k", "3")
+
+    assert result.exit_code == 0, result.output
+    assert seen["meta"]["mode"] == "pipeline"
+    assert seen["meta"]["k"] == 3
+    assert "agent_k" not in seen["meta"]
+
+
+def test_eval_answers_pipeline_mode_is_the_default_and_has_no_agent_meta(answers_run):
+    invoke, seen = answers_run
+
+    result = invoke()
+
+    assert result.exit_code == 0, result.output
+    assert seen["agent"] is None
+    assert seen["meta"]["mode"] == "pipeline"
+    assert seen["meta"]["k"] == cli.ABLATIONS["hybrid+rerank"].k
+    assert "agent_llm" not in seen["meta"]
+    assert "agent_limits" not in seen["meta"]
+
+
+def test_eval_answers_judge_model_replaces_the_judge_model_and_labels_it(answers_run):
+    invoke, seen = answers_run
+
+    result = invoke("--judge-backend", "openrouter", "--judge-model", "judge/x")
+
+    assert result.exit_code == 0, result.output
+    assert seen["meta"]["judge"] == "openrouter:judge/x"
+    assert seen["evaluate"]["judge"].model == "judge/x"
+    assert seen["meta"]["llm"] == "fake"
+
+
+def test_eval_answers_records_prices_and_passes_them_to_evaluation(answers_run):
+    invoke, seen = answers_run
+
+    result = invoke("--price-in", "0.5", "--price-out", "2")
+
+    assert result.exit_code == 0, result.output
+    assert seen["meta"]["prices"] == {"in": 0.5, "out": 2.0}
+    assert seen["evaluate"]["price_in"] == 0.5
+    assert seen["evaluate"]["price_out"] == 2.0
+
+
+def test_eval_answers_rejects_unknown_mode(answers_run):
+    invoke, seen = answers_run
+
+    result = invoke("--mode", "bogus")
+
+    assert result.exit_code == 2
+    assert "bogus" in result.output
+    assert seen["evaluate"] is None
+
+
+def test_eval_answers_resume_must_exist(answers_run, tmp_path):
+    invoke, seen = answers_run
+
+    result = invoke("--resume", str(tmp_path / "missing.partial.jsonl"))
+
+    assert result.exit_code == 2
+    assert seen["evaluate"] is None
+
+
+def test_eval_answers_judge_gets_its_own_output_budget(answers_run, monkeypatch):
+    invoke, seen = answers_run
+    built: list[Settings] = []
+    real_make_generator = cli.make_generator
+
+    def spy_make_generator(settings):
+        built.append(settings)
+        return real_make_generator(settings)
+
+    monkeypatch.setattr(cli, "make_generator", spy_make_generator)
+
+    result = invoke("--judge-backend", "openrouter")
+
+    assert result.exit_code == 0, result.output
+    assert seen["evaluate"]["judge"].max_tokens == 8192
+    assert [s.llm_max_tokens for s in built] == [1024, 8192]
+    assert seen["meta"]["judge_max_tokens"] == 8192
+
+
+def test_eval_answers_judge_max_tokens_overrides_the_judge_budget_only(answers_run, monkeypatch):
+    invoke, seen = answers_run
+    built: list[Settings] = []
+    real_make_generator = cli.make_generator
+
+    def spy_make_generator(settings):
+        built.append(settings)
+        return real_make_generator(settings)
+
+    monkeypatch.setattr(cli, "make_generator", spy_make_generator)
+
+    result = invoke("--judge-backend", "openrouter", "--judge-max-tokens", "2048")
+
+    assert result.exit_code == 0, result.output
+    assert seen["evaluate"]["judge"].max_tokens == 2048
+    assert [s.llm_max_tokens for s in built] == [1024, 2048]
+    assert seen["meta"]["judge_max_tokens"] == 2048
+
+
+def test_eval_answers_llm_failure_prints_resume_hint(answers_run, monkeypatch):
+    invoke, _seen = answers_run
+
+    def fail(*_args, **_kwargs):
+        raise openai.APIConnectionError(request=httpx.Request("POST", "https://x"))
+
+    monkeypatch.setattr(cli, "evaluate_answers", fail)
+
+    result = invoke()
+
+    assert result.exit_code == 1
+    assert "--resume" in result.output
+    assert "-answers.partial.jsonl" in result.output
+
+
+def test_eval_answers_rejects_k_in_agent_mode_before_connecting(answers_run, monkeypatch):
+    invoke, seen = answers_run
+
+    def boom(_settings):
+        raise AssertionError("must not connect to the database")
+
+    monkeypatch.setattr(cli, "connect", boom)
+
+    result = invoke("--mode", "agent", "--k", "3")
+
+    assert result.exit_code == 2
+    assert "--k applies to pipeline mode only" in result.output
+    assert seen["evaluate"] is None

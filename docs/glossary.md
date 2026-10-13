@@ -19,7 +19,12 @@ normalisation. Postgres full-text ranking is BM25-like.
 **Bi-encoder**: model that embeds query and passage separately and compares the vectors
 (what embedding search does). Fast, precomputable, shallower than a cross-encoder.
 
+**Checkpoint / resume**: `eval-answers` appends each question's result to a checkpoint file as it
+goes; `--resume` skips finished ids, so a stopped run does not re-spend API quota.
+
 **Chunk**: a passage of a document; the unit that is embedded, retrieved and cited.
+
+**Citation coverage**: share of answer sentences that carry at least one `[n]` citation.
 
 **Contextual chunk header**: prepending the document title / heading path to a chunk before
 embedding it, so the vector carries where the passage comes from.
@@ -73,12 +78,18 @@ when only 5 passages were given). Detectable mechanically, unlike unsupported cl
 
 **Hybrid search**: combining dense and sparse results.
 
+**Judge failure**: a judgement that did not parse after re-asks; counted in `judge_failures`
+for faithfulness.
+
 **MRR (mean reciprocal rank)**: average of 1/rank of the first relevant result. Rewards putting
 the right chunk first.
 
 **nDCG**: ranking metric that rewards relevant results near the top, with graded relevance.
 
 **Recall@k**: share of questions whose relevant source appears in the top k results.
+
+**p95 latency (nearest-rank)**: the value below which 95% of questions finished, taken as
+`sorted[ceil(0.95·n) − 1]` over the sorted per-question latencies.
 
 **Pooled judgments**: building relevance labels by reviewing what retrieval systems actually
 return and adding the truly relevant results (TREC practice). Fixes false negatives from an

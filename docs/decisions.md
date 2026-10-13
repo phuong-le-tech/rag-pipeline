@@ -2,6 +2,21 @@
 
 Newest first. Each entry: context, decision, consequences. Revisit when evals say otherwise.
 
+## 2026-10-13: Agent mode stays opt-in; answer judge is a free OpenRouter model
+- **Context**: first measured comparison of pipeline and agent on the same 94 answerable and 15
+  unanswerable questions, same retrieval and answer model. The owner runs no paid Claude calls, so
+  the Sonnet judge used for the earlier answer table is no longer an option.
+- **Decision**: the pipeline stays the default everywhere; `rag ask --agent` and
+  `eval-answers --mode agent` stay opt-in. The judge is `dots-studio/dots-3-note-preview:free` on
+  OpenRouter, with its own output budget (`--judge-max-tokens`, default 8192), from a different
+  family than the answer model.
+- **Consequence**: the agent recovers refusals (false refusals 7 to 1 of 94; 0 of 25 hand-written)
+  and raises correct-yes from 0.798 to 0.844 with faithfulness equal (0.886 vs 0.882). The gain is
+  about 5 points on 84 to 90 graded answers, not tested for significance. It costs about 2.9x the
+  tokens, 2.3x the median latency (11.2 s vs 5.0 s), and half the citation coverage (0.222 vs
+  0.458); 10 of 109 runs hit the 4-step limit. Judged numbers are only comparable within one judge,
+  and the free judge is not Sonnet: judged tables from different judges must not be mixed.
+
 ## 2026-10-12: Agent mode is opt-in; hand-written loop; 4-step cap; separate agent model
 - **Context**: the pipeline does one search per question, so it cannot retry a bad query or
   split a comparison into parts. We want to measure an agent against the pipeline before any

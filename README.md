@@ -17,6 +17,9 @@ backed by an evaluation on 94 reviewed questions.
 - **Cited answers with refusal**: every `[n]` is validated against the passages sent to the
   model; 0 invented citations, 14/15 unanswerable questions refused
 - **Glass-box UI**: each stage streams over server-sent events with its hits, scores and timing
+- **Opt-in agent mode**: a hand-written tool-calling loop (no framework) where the model decides
+  what to search and how often; on the same 94 + 15 questions it cuts false refusals from 7 to 1
+  for ~2.9× the tokens, so the fixed pipeline stays the default
 - **Production-ready API**: rate limiting, daily LLM budget, concurrency cap, CORS allowlist,
   CSP, no personal data stored; Docker image with models baked in
 - **Runs on free tiers**: local embeddings and reranker (no key), free LLM via OpenRouter
@@ -41,6 +44,11 @@ OFFLINE   Kubernetes docs ─► loader (frontmatter, Hugo shortcodes, HTML → 
 ONLINE    question ─► dense search ─┐
                      keyword search ─┴► RRF fusion ─► cross-encoder rerank ─► max 1 chunk per page
           ─► top 5 passages ─► grounded prompt ─► LLM (streamed) ─► answer + validated [n] citations
+
+AGENT     question ─► LLM ─► search_docs(query, k) ─► same retrieval as above ─► numbered passages
+(opt-in)       ▲                                                                      │
+               └──────────── next search, until it answers (max 4 steps) ◄────────────┘
+          ─► answer validated against every passage seen during the loop
 
 EVAL      golden set (94 reviewed questions) ─► hit@k / recall@k / MRR / nDCG per configuration
           unanswerable set (15) + LLM judge ─► faithfulness, correctness, citations, refusals
@@ -83,6 +91,46 @@ Claude Sonnet, 94 answerable + 15 unanswerable questions):
 | Refused on unanswerable / false-premise questions | 14 / 15 |
 | Refused although answerable (retrieval misses) | 0.07 |
 
+### Pipeline vs agent
+
+Same 94 answerable and 15 unanswerable questions, same retrieval (hybrid+rerank, max 1/page), same
+answer model (Nemotron 3 Super, free) and same judge (`dots-3-note-preview`, free, via OpenRouter).
+The agent may search up to 4 times per question; the pipeline searches once. The judge differs
+from the Claude Sonnet table above, so these judged numbers are not comparable with it.
+
+| Metric | Pipeline | Agent |
+|---|---:|---:|
+| Answer rate | 0.926 | 0.989 |
+| False refusals (answerable, refused) | 0.074 (7/94) | 0.011 (1/94) |
+| Faithfulness | 0.886 | 0.882 |
+| Correct (yes) | 0.798 | 0.844 |
+| Correct (partial) | 0.131 | 0.122 |
+| Citation coverage (sentences with a citation) | 0.458 | 0.222 |
+| Invented citations | 0.000 | 0.000 |
+| Refused on unanswerable | 15/15 | 15/15 |
+| LLM calls per question | 1.0 | 2.5 |
+| Searches per question | 1 fixed (not a tool call) | 1.5 |
+| Tokens per question (in + out) | 1,886 (1,500 + 385) | 5,374 (4,587 + 787) |
+| Latency p50 (s) | 5.0 | 11.2 |
+| Latency p95 (s) | 10.9 | 30.3 |
+
+By question origin (correct = yes, over the graded answers; false refusals over the 25 or 69
+questions):
+
+| Origin | Correct (yes): pipeline | Correct (yes): agent | False refusals: pipeline | False refusals: agent |
+|---|---:|---:|---:|---:|
+| Hand-written (25) | 0.727 | 0.792 | 0.080 | 0.000 |
+| LLM-drafted (69) | 0.823 | 0.864 | 0.072 | 0.014 |
+
+The agent recovers refusals: false refusals fall from 7 to 1 of 94, and correct answers rise
+from 0.798 to 0.844 with faithfulness unchanged. It costs about 2.9x the tokens, 2.3x the median
+latency, and half the citation coverage (0.222 against 0.458). The correctness gain is small (about 5
+points on 84 to 90 graded answers, not tested for significance), so the pipeline stays the
+default and agent mode stays opt-in.
+
+Multi-part questions: pending owner review; no numbers yet. Details and the step-limit runs in
+[docs/08-agent.md](docs/08-agent.md).
+
 ## Getting started
 
 **Prerequisites**: [uv](https://docs.astral.sh/uv/), Docker, Node.js 22+, and an
@@ -123,7 +171,7 @@ uv run rag ask "How do I roll back a deployment?"
 | `rag ask QUESTION [-k N] [--rewrite] [--no-rerank]` | Cited answer, streamed |
 | `rag ask QUESTION --agent [--no-rerank]` | Agent mode: the LLM decides what to search and how many passages (k 1–10) per search; each step printed; answer not streamed |
 | `rag eval [--config NAME] [--limit N]` | Retrieval metrics per configuration, split by question origin |
-| `rag eval-answers [--config NAME] [--judge-backend B]` | Faithfulness, correctness, citations, refusals (LLM judge) |
+| `rag eval-answers [--config NAME] [--judge-backend B] [--mode agent] [--judge-model ID] [--judge-max-tokens N] [--resume FILE]` | Faithfulness, correctness, citations, refusals (LLM judge) |
 | `rag draft-questions --n N --seed S` | LLM-drafted golden questions (resumable) |
 | `rag review-drafts` | Human review of drafts: y / e / n / q (resumable) |
 
@@ -258,7 +306,10 @@ src/rag/
   embed/               Embedder protocol: local (fastembed), OpenAI, fake
   retrieval/           search.py (dense, keyword), fusion.py (RRF, per-page cap),
                        rerank.py (cross-encoder), rewrite.py (LLM query rewrite), retriever.py
-  generate/            prompt.py, citations.py, generator.py (Claude, OpenAI-compatible), answer.py
+  generate/            prompt.py, citations.py, generator.py (Claude, OpenAI-compatible, tool calls),
+                       answer.py
+  agent/               loop.py (tool-calling loop, passage registry, limits), tools.py (search_docs),
+                       prompt.py
   evals/               metrics.py, golden.py, runner.py, drafting.py, review.py, judge.py, answers.py
   config.py, db.py, schema.sql, cli.py
 web/                   Next.js UI: components/, lib/api.ts (SSE client), app/privacy, app/legal
@@ -276,6 +327,8 @@ Dockerfile, railway.json, docker-compose.yml
   provider may log prompts. Set `RAG_LLM_BACKEND=anthropic` for Claude.
 - **No authentication**: the API is public by design and protected only by the guards above.
 - **Stage events arrive together** once retrieval finishes (~1.5 s), then the answer streams.
+- **Agent mode is opt-in and slower**: median latency about 11 s against 5 s, and its citations
+  are sparser (22% of sentences cited against 46% for the pipeline).
 
 ## Credits
 

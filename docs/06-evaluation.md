@@ -91,6 +91,15 @@ uv run rag review-drafts        # y = accept, e = edit question, n = reject, q =
 An unreviewed LLM question never enters the golden set: the person reviewing is the quality
 gate.
 
+### Multi-part questions
+
+Most golden questions are answered by one page, and one search is enough to find it. That favours
+the fixed pipeline. `evals/drafts-multi.jsonl` holds 15 drafts that need 2 to 3 pages: 8
+comparisons ("how does X differ from Y") and 7 multi-part how-tos. An agent that searches several
+times should gain here. After review with `rag review-drafts`, the accepted ones go to
+`evals/multi.jsonl` (origin `multi`). They are reported apart from the main set (94 golden + 15 unanswerable questions), so
+the agent-versus-pipeline comparison on the main set is not biased by questions written to suit it.
+
 ## Results v2: 94 questions (2026-10-10, corpus `b2e60d8`, `local:BAAI/bge-small-en-v1.5:384:1500:loader2`, reranker MiniLM-L-6, rewrites by Nemotron 3 Super)
 
 25 hand-written + 69 LLM-drafted questions reviewed against their source passages (see
@@ -138,6 +147,47 @@ What the bigger set changed:
 5. **Keep the generated pages.** With reranking, removing them lowers Hit@5 (0.894 → 0.862).
    The open question from chapter 2 is settled.
 6. **Dense ≫ keyword** at every sample size.
+
+## Running `eval-answers`: flags and the judge
+
+`rag eval-answers` answers every golden question, then grades the answers with a judge model.
+The flags that matter for a comparison:
+
+- `--mode pipeline|agent`: `pipeline` retrieves once and answers; `agent` lets the LLM call the
+  search tool (see [08-agent.md](08-agent.md)). Both write the same metrics, plus calls, tokens,
+  latency and cost.
+- `--k N`: passages per search in pipeline mode only (default: the ablation's k). In agent mode
+  the model picks k per search (default 5, max 10), so `--k` is rejected with `--mode agent`.
+- `--judge-model ID`: the judge model, with `--judge-backend` choosing the provider.
+- `--judge-max-tokens N`: the judge's output budget (default 8192). Reasoning judges spend hundreds
+  of tokens thinking before the JSON, so a small budget truncates the reply and the judgement is lost.
+- `--price-in` / `--price-out`: USD per million tokens, so cost per question is computed from the
+  token counts (default 0, which reports zero cost).
+- `--resume FILE`: continue an interrupted run from its checkpoint. The file must exist, so a
+  typo cannot start a full, quota-spending run.
+
+Pick a judge from a different model family than the generator. An LLM judge tends to rate its
+own family's wording as correct and faithful, so a same-family judge can hide the errors you
+are trying to measure.
+
+### Judge change (2026-10-13): a free OpenRouter judge
+
+The owner runs no paid Claude calls, so the answer judge is now `dots-studio/dots-3-note-preview`
+on OpenRouter (free). It comes from a different family than the answer model (Nemotron, NVIDIA),
+so the family rule above still holds. What changes:
+
+- **Judged numbers are not comparable across judges.** The Sonnet table below and the
+  pipeline-vs-agent table in the README and [08-agent.md](08-agent.md) use different judges.
+  Compare within one table only.
+- **Reasoning judges need their own output budget.** dots-3 spends tokens thinking before it writes
+  the JSON. The judge used to share the answer budget (`RAG_LLM_MAX_TOKENS`, default 1,024), so
+  replies were truncated and verdicts lost. `--judge-max-tokens` (default 8192) gives the judge its
+  own budget (commit `c8dad97`).
+- **Candidates rejected.** `gemma-4-31b`: upstream pool returned 429s. `inkling`: 403, usable only
+  from agent harnesses.
+- **Failures are still reported.** dots-3 leaves some verdicts missing; missing faithfulness
+  verdicts count as `judge_failures`, while a missing `correct` verdict is not counted there (see
+  [08-agent.md](08-agent.md#results) for the 2026-10-13 run).
 
 ## Answer-level results (2026-10-11, `rag eval-answers`)
 

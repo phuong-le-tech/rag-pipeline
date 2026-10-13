@@ -400,24 +400,141 @@ Output per step: `→ search_docs("pod disruption budget", k=5)  1.4 s` then the
 
 ---
 
-## Phase 2: pipeline vs agent evaluation (own detailed plan when started)
+## Phase 2: pipeline vs agent evaluation
 
-| File | Change |
-|---|---|
-| `src/rag/generate/generator.py` | `usage = {"input": 0, "output": 0, "reported": False}` on both real backends, incremented by `generate` and `chat` |
-| `src/rag/evals/answers.py` | `AnswerResult` gains `origin`, `llm_calls`, `tool_calls`, `input_tokens`, `output_tokens`, `stopped`; `evaluate_answers(..., mode="pipeline", agent=None)` where `agent: Callable[[str], AgentResult]`; judge receives `answer.retrieved` (= registry for the agent) unchanged; summary adds `latency_p95_ms`, mean calls/tokens, `cost_usd`; `answers_markdown` gains per-origin columns (all / human / llm); each result appended to `<out>.partial.jsonl` and skipped on rerun (resume by id) |
-| `src/rag/evals/golden.py` | `ORIGINS = ("human", "llm", "multi")` |
-| `src/rag/cli.py` | `eval-answers --mode pipeline\|agent --k N --price-in X --price-out Y`; meta records mode, agent model, limits |
-| `evals/drafts-multi.jsonl` | ~15 comparison / multi-part drafts, 2+ `relevant_sources` each, `origin: "multi"`; you review into `evals/multi.jsonl` |
-| `tests/test_answers.py` | agent mode with scripted fake, origin split, resume, p95, cost |
+Detailed 2026-10-12. Branch `feat/agent-eval`. **Judge is an OpenRouter model, never Claude** (owner's choice; $10 credits = 1,000 requests/day). The judge must be a different model family than the generator (Nemotron) to avoid self-grading.
 
-Runs (background, `data/*.log`), all at `--config "hybrid+rerank, max 1/page" --k 5`, same judge (Claude Sonnet):
-1. pipeline, Nemotron (baseline; must reproduce the published numbers within noise, otherwise stop and debug);
-2. agent, Nemotron;
-3. pipeline and agent on the agent model if it differs (same-model comparison);
-4. both modes on `evals/multi.jsonl`, reported separately.
+### Rulings for Phase 2 (supersede the earlier sketch)
 
-Done when: README table "pipeline vs agent" with correct/partial, faithfulness, invented citations, refusal on unanswerable, false refusals, calls, p50/p95, tokens, cost, split by origin, and an honest conclusion; `docs/08-agent.md` results section with results file names, corpus ref and fingerprint.
+- Judge: `--judge-backend openrouter --judge-model <id>`. Candidates (free, other families, listed by the OpenRouter API on 2026-10-12): `google/gemma-4-31b-it:free` (first choice), `thinkingmachines/inkling:free`, `dots-studio/dots-3-note-preview:free`. Chosen by a `--limit 5` dry run: 0 judge parse failures, no persistent 429.
+- The published README answer numbers were judged by Claude, so the new baseline cannot "reproduce" judge-based metrics. Reproduction check covers judge-independent metrics only: answer rate, false refusals, invented citations, refusal on unanswerable (within ±0.05). Judge-based metrics are compared only between runs with the same judge.
+- Token usage: real backends keep a cumulative `usage` counter; evals read the per-question delta.
+- `evaluate_answers` takes an `answerer: Callable[[str], Answered]` so pipeline and agent share one loop, one judge path and one summary.
+
+### Task 2.1: token usage counters on the real backends
+
+**Files:** modify `src/rag/generate/generator.py`; test `tests/test_generate.py`
+
+**Interfaces — Produces:**
+```python
+@dataclass
+class Usage:                     # mutable on purpose: a running counter
+    input_tokens: int = 0
+    output_tokens: int = 0
+    reported: bool = False       # False until a provider returned a usage block
+    def add(self, input_tokens: int | None, output_tokens: int | None) -> None
+        # adds non-None values; sets reported=True if either is not None
+
+ClaudeGenerator.usage: Usage            # updated by generate() and chat()
+OpenAICompatibleGenerator.usage: Usage  # updated by generate() and chat()
+def usage_of(generator: object) -> Usage | None   # getattr(generator, "usage", None), unwrapping `.inner` (RetryingGenerator) first
+```
+`stream()` is not counted (evals don't stream; documented in the docstring). Anthropic usage: `response.usage.input_tokens/output_tokens`; OpenAI: `response.usage.prompt_tokens/completion_tokens`; missing `usage` → `add(None, None)` (no change).
+
+- [x] **Step 1: failing tests**: `Usage.add` sums and flips `reported`; `add(None, None)` leaves `reported` False; ClaudeGenerator.generate with a fake response carrying usage 100/20 then chat with 50/5 → usage 150/25 reported; OpenAI generate with `usage=None` → reported False; `usage_of(FakeGenerator())` is None; `usage_of(RetryingGenerator(gen))` returns `gen.usage` (RetryingGenerator lives in `rag.evals.answers`, test it in tests/test_answers.py).
+- [x] **Step 2:** `uv run pytest tests/test_generate.py -k usage -v` → FAIL. **Step 3:** implement. **Step 4:** pass; existing generate/stream tests unchanged.
+- [x] **Step 5:** commit `feat(generate): cumulative token usage on real backends`
+
+### Task 2.2: one evaluation loop for pipeline and agent, with counters, origin split, p95 and cost
+
+**Files:** modify `src/rag/evals/answers.py`; test `tests/test_answers.py`
+
+**Interfaces — Consumes:** `Usage`, `usage_of` (2.1); `run_agent`, `AgentResult`, `Limits` (`rag.agent.loop`); `SearchTool` (`rag.agent.tools`); `answer_question`.
+**Produces:**
+```python
+@dataclass(frozen=True)
+class Answered:
+    answer: Answer
+    llm_calls: int
+    tool_calls: int
+    input_tokens: int | None
+    output_tokens: int | None
+    stopped: str            # "pipeline" for the fixed pipeline, AgentResult.stopped for the agent
+
+def pipeline_answerer(retriever, generator, config) -> Callable[[str], Answered]
+    # answer_question(question, retriever, generator, config); llm_calls = 0 if refused with no
+    # retrieved hits else 1; tokens = usage_of(generator) delta (None if not reported)
+def agent_answerer(make_llm: Callable[[], ToolGenerator], search: Callable[[str, int], SearchResult],
+                   limits: Limits) -> Callable[[str], Answered]
+    # builds a fresh llm per question (ScriptedToolGenerator is single-use); drains run_agent,
+    # keeps the final AgentResult; tokens from AgentResult
+
+class RetryingGenerator:  # existing; add
+    def chat(self, system, messages, tools, allow_tools=True) -> Turn   # with_retry like generate()
+
+AnswerResult gains (after `latency_ms`, all with defaults so old result files still load in tests):
+    origin: str = ""; llm_calls: int = 0; tool_calls: int = 0
+    input_tokens: int | None = None; output_tokens: int | None = None; stopped: str = ""
+
+def evaluate_answers(golden, unanswerable, answerer: Callable[[str], Answered], judge,
+                     sleep=time.sleep, on_progress=None, price_in: float = 0.0,
+                     price_out: float = 0.0) -> AnswerReport
+    # judge wrapped in RetryingGenerator as today; judge sees answer.retrieved (agent: every
+    # passage seen in the run) exactly as today
+```
+Summary keys added: `latency_p95_ms` (nearest-rank: `sorted[ceil(0.95*n)-1]`), `llm_calls_mean`, `tool_calls_mean`, `tokens_mean` (input+output over questions that reported tokens; 0.0 if none), `cost_usd_per_question` (`(in*price_in + out*price_out)/1e6` averaged over reporting questions; prices are USD per million tokens).
+Per-origin: `report.by_origin: dict[str, dict[str, float]]` = `_summary` over results of each origin (answerable origins from GoldenItem.origin; unanswerable items use their own `origin`), keys sorted. `answers_markdown(report)` prints the existing overall table plus new rows (LLM calls / searches / tokens per question, p50/p95 latency, cost) and then a second table "By origin" with columns per origin for: answer rate, false refusals, faithfulness, correct yes, correct partial, invented citations, unanswerable refusal (only where n > 0; blank cell otherwise).
+
+The CLI call site must keep working in this task: update `eval_answers_cmd` to build `pipeline_answerer(...)` and pass it (no new flags yet — Task 2.4 adds them).
+
+- [x] **Step 1: failing tests** (reuse the file's StubRetriever / ByQuestionGenerator / StubJudge / GOLDEN): existing `run()` adapted to `pipeline_answerer` keeps every existing assertion (proves pipeline metrics unchanged); agent mode with `ScriptedToolGenerator` per question via `make_llm` and a fake `search` → `tool_calls`, `llm_calls`, `stopped` recorded and judge called with registry passages; p95 on latencies [1..20] → 19; by_origin splits human vs llm (add one `llm`-origin GoldenItem in a new test, not in the shared fixture); cost with prices 1.0/2.0 and tokens 1,000/500 → 0.002; a pipeline generator exposing `usage` yields per-question deltas; `RetryingGenerator.chat` retries a rate-limit error then succeeds.
+- [x] **Step 2–4:** fail → implement → `uv run pytest tests/test_answers.py tests/test_cli.py -q` pass.
+- [x] **Step 5:** commit `feat(evals): shared answer loop for pipeline and agent, origin split, p95, cost`
+
+### Task 2.3: resumable answer evaluation
+
+**Files:** modify `src/rag/evals/answers.py`, `src/rag/cli.py`; test `tests/test_answers.py`
+
+**Interfaces — Produces:**
+```python
+def evaluate_answers(..., checkpoint: Path | None = None) -> AnswerReport
+    # if checkpoint exists: load each JSON line as an AnswerResult (asdict round-trip; tuples
+    # restored for `unsupported`), skip those ids; append each new result as one JSON line
+    # (flush after each write) as soon as it is judged; the report covers loaded + new results
+    # in the original job order
+```
+CLI: `eval-answers --resume PATH` (default None). Without `--resume`, the CLI uses a fresh checkpoint `out/<timestamp>-answers.partial.jsonl` so an interrupted run can be resumed by passing that path; the final JSON is still written by `write_answer_results`. The checkpoint path is printed at start (`Checkpoint: …`).
+
+- [x] **Step 1: failing tests**: run with checkpoint, interrupt after 2 jobs (answerer raises on the 3rd question), rerun with same checkpoint → answerer called only for the remaining ids, judge not re-called for the first 2, final summary equals an uninterrupted run; checkpoint lines are valid JSON with `id`.
+- [x] **Step 2–4:** fail → implement → pass. **Step 5:** commit `feat(evals): resume answer evaluation from a checkpoint`
+
+### Task 2.4: `eval-answers` flags for agent mode, k, judge model and prices
+
+**Files:** modify `src/rag/cli.py`; test `tests/test_cli.py`; docs `docs/06-evaluation.md` (flag list), `README.md` CLI line, `CLAUDE.md` Commands line
+
+New options: `--mode pipeline|agent` (default pipeline), `--k N` (default None = the ablation's k), `--judge-model ID` (default None = judge backend's default model), `--price-in`, `--price-out` (USD per Mtok, default 0.0).
+- `--k` → `replace(config, k=k, candidates=max(config.candidates, k))`; with `--mode agent` the SearchTool gets that config and the model picks k per call (cap stays 10).
+- Agent mode: `agent_answerer(lambda: RetryingGenerator(make_tool_generator(settings)), SearchTool(retriever, config), agent_limits(settings))`. Reranker built iff `config.rerank`.
+- `--judge-model` → judge settings copy with `openrouter_model` (openrouter backend) or `llm_model` (anthropic backend) replaced. Unknown `--mode` → `BadParameter`.
+- Meta adds: `mode`, `k`, `agent_llm` (label for `agent_backend or llm_backend` + `agent_model or default`, only in agent mode), `agent_limits` (dict), `judge` label reflects `--judge-model`, `prices`.
+- `_llm_label` gains an optional model override so labels are truthful.
+
+- [x] **Step 1: failing tests** (unit, monkeypatch `connect`, `Retriever`, `make_reranker`, `make_embedder`, `evaluate_answers` to capture arguments — follow the monkeypatch style of the existing agent CLI unit test): `--mode agent` passes an answerer that is agent-based (call it with a fake to check), `--judge-model x --judge-backend openrouter` gives a judge whose model is `x`, `--k 5` changes config k, meta contains mode/k/judge label; `--mode bogus` exits non-zero. Keep the existing integration test for eval-answers green.
+- [x] **Step 2–4:** fail → implement → pass. **Step 5:** commit `feat(cli): eval-answers --mode agent, --k, --judge-model, prices`
+
+### Task 2.5: multi-part question drafts
+
+**Files:** modify `src/rag/evals/golden.py` (`ORIGINS = ("human", "llm", "multi")`); create `evals/drafts-multi.jsonl`; test `tests/test_golden.py`; docs `docs/06-evaluation.md` (a short "Multi-part questions" paragraph: why, separate file, reported apart)
+
+- 15 drafts, one JSON object per line, same keys as `evals/drafts.jsonl`: `id` (`multi-01`…`multi-15`), `question`, `relevant_sources` (2–3 corpus paths relative to `data/k8s-docs`, **each must exist**), `reference_answer` (one or two sentences covering every part), `tags` (`["multi-draft", "comparison"|"multi-part"]`), `origin: "multi"`.
+- Mix: 8 comparisons (e.g. Deployment vs StatefulSet; ConfigMap vs Secret; ClusterIP vs NodePort vs LoadBalancer; liveness vs readiness probe; Job vs CronJob; requests vs limits; DaemonSet vs Deployment; PV vs PVC), 7 multi-part how-tos (e.g. "create a Secret and mount it as a volume", "drain a node then uncordon it", "set resource limits and see a pod's usage"). Reference answers come from reading the source pages, not from memory.
+- [x] **Step 1: failing test**: `load_golden` accepts origin `multi`; a test that every `relevant_sources` path in `evals/drafts-multi.jsonl` exists under `data/k8s-docs` (skip if the corpus is absent, like other corpus-dependent tests) and that each row has ≥ 2 sources.
+- [x] **Step 2–4:** fail → implement + write drafts → pass. **Step 5:** commit `feat(evals): multi-part question drafts and the multi origin`
+- [ ] **Owner step (not a subagent):** `uv run rag review-drafts --drafts evals/drafts-multi.jsonl --golden evals/multi.jsonl --reviewed evals/drafts-multi-reviewed.txt`
+
+### Runs (controller, background, after 2.1–2.5 are merged into the branch)
+
+All with `--config "hybrid+rerank, max 1/page" --k 5 --judge-backend openrouter --judge-model <J>`; logs in `data/eval-*.log`; resumable via `--resume`.
+0. Judge dry run: pipeline `--limit 5` with candidate J; check judge failures = 0. Try the next candidate otherwise.
+1. Pipeline, Nemotron, full set (109 questions): ~109 answer + ~94 judge calls.
+2. Agent, Nemotron, full set: ~300 answer calls + ~94 judge calls.
+3. Both modes on `evals/multi.jsonl` with `--unanswerable /dev/null`-equivalent (an empty file) once the owner has reviewed it.
+Budget ≈ 700 requests: fits one day on the 1,000/day credit cap.
+
+### Task 2.6: write-up
+
+**Files:** `README.md` (Results: "Pipeline vs agent" table with both modes, overall and by origin, plus multi-part table; honest conclusion; judge named), `docs/08-agent.md` (Results section: numbers, results file names, corpus ref, fingerprint, judge, limits), `docs/06-evaluation.md` (judge change note), `docs/decisions.md` (agent stays opt-in or not, with the evidence; OpenRouter judge choice), `docs/README.md` status, plan ticks.
+Numbers are copied from the results JSON files, never typed from memory. Commit `docs: pipeline vs agent results`.
 
 ## Phase 3: API + UI (own detailed plan when started)
 
@@ -446,7 +563,7 @@ Chunks of one `documents.source` ordered by `ord`, capped at 8,000 chars, added 
 | Free model can't do tool calls reliably | medium | Task 1.7 smoke test gates Phase 2; `RAG_AGENT_BACKEND/MODEL` switch |
 | OpenRouter daily cap stalls the eval | high without credits | resumable `eval-answers`; run over several days or add credits |
 | Agent is slower (3–4 reranks × 1.4–4 s) | high | measured and reported, not hidden; step cap |
-| Judge cost (Claude) doubles with two modes | certain | `--limit` dry run first; one full run per mode |
+| Free OpenRouter judge emits invalid JSON or grades differently from Claude | medium | `--limit 5` dry run; judge failures reported; baseline re-judged by the same judge |
 | Pipeline numbers drift from refactors | low | `format_context` tests byte-identical; baseline rerun in Phase 2 |
 
 ## Acceptance

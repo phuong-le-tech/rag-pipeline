@@ -11,6 +11,22 @@ from rag.generate.prompt import REFUSAL
 FAKE_ANSWER = "This is a fake answer that cites the first passage [1]."
 
 
+@dataclass
+class Usage:
+    """Running token counter. Mutable on purpose: each real generator adds to its own."""
+
+    input_tokens: int = 0
+    output_tokens: int = 0
+    reported: bool = False  # False until a provider returned a usage block
+
+    def add(self, input_tokens: int | None, output_tokens: int | None) -> None:
+        if input_tokens is None and output_tokens is None:
+            return
+        self.input_tokens += input_tokens or 0
+        self.output_tokens += output_tokens or 0
+        self.reported = True
+
+
 @dataclass(frozen=True)
 class ToolCall:
     id: str
@@ -70,6 +86,7 @@ class ClaudeGenerator:
         self.timeout = timeout
         self._api_key = api_key
         self._client = client
+        self.usage = Usage()
 
     @property
     def client(self) -> Any:
@@ -90,9 +107,11 @@ class ClaudeGenerator:
 
     def generate(self, system: str, user: str) -> str:
         response = self.client.messages.create(**self._request(system, user))
+        self.usage.add(*_anthropic_tokens(response))
         return "".join(block.text for block in response.content if block.type == "text")
 
     def stream(self, system: str, user: str) -> Iterator[str]:
+        # Streaming is not counted: evals never stream, and the stream has no usage block here.
         with self.client.messages.stream(**self._request(system, user)) as stream:
             yield from stream.text_stream
 
@@ -116,13 +135,9 @@ class ClaudeGenerator:
             for block in response.content
             if block.type == "tool_use"
         )
-        usage = response.usage
-        return Turn(
-            text,
-            calls,
-            usage.input_tokens if usage else None,
-            usage.output_tokens if usage else None,
-        )
+        tokens = _anthropic_tokens(response)
+        self.usage.add(*tokens)
+        return Turn(text, calls, *tokens)
 
 
 class OpenAICompatibleGenerator:
@@ -146,6 +161,7 @@ class OpenAICompatibleGenerator:
         self.base_url = base_url
         self._api_key = api_key
         self._client = client
+        self.usage = Usage()
 
     @property
     def client(self) -> Any:
@@ -169,9 +185,11 @@ class OpenAICompatibleGenerator:
 
     def generate(self, system: str, user: str) -> str:
         response = self.client.chat.completions.create(**self._request(system, user))
+        self.usage.add(*_openai_tokens(response))
         return response.choices[0].message.content or ""
 
     def stream(self, system: str, user: str) -> Iterator[str]:
+        # Streaming is not counted: evals never stream, and the stream has no usage block here.
         chunks = self.client.chat.completions.create(**self._request(system, user), stream=True)
         for chunk in chunks:
             if chunk.choices and chunk.choices[0].delta.content:
@@ -195,13 +213,9 @@ class OpenAICompatibleGenerator:
             ToolCall(call.id, call.function.name, call.function.arguments)
             for call in message.tool_calls or []
         )
-        usage = response.usage
-        return Turn(
-            message.content or "",
-            calls,
-            usage.prompt_tokens if usage else None,
-            usage.completion_tokens if usage else None,
-        )
+        tokens = _openai_tokens(response)
+        self.usage.add(*tokens)
+        return Turn(message.content or "", calls, *tokens)
 
 
 class ToolGenerator(Protocol):
@@ -226,6 +240,23 @@ class ScriptedToolGenerator:
         if not self._turns:
             return Turn(REFUSAL)
         return self._turns.pop(0)
+
+
+def usage_of(generator: object) -> Usage | None:
+    """Token counter of a generator, looking through a ``RetryingGenerator``-style ``.inner``."""
+    inner = getattr(generator, "inner", generator)
+    return getattr(inner, "usage", None)
+
+
+def _anthropic_tokens(response: Any) -> tuple[int | None, int | None]:
+    # Fakes in tests may return no usage block at all.
+    usage = getattr(response, "usage", None)
+    return getattr(usage, "input_tokens", None), getattr(usage, "output_tokens", None)
+
+
+def _openai_tokens(response: Any) -> tuple[int | None, int | None]:
+    usage = getattr(response, "usage", None)
+    return getattr(usage, "prompt_tokens", None), getattr(usage, "completion_tokens", None)
 
 
 def _anthropic_tools(tools: list[dict]) -> list[dict]:
