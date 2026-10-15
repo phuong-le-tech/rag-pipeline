@@ -1,4 +1,4 @@
-# Glass-box RAG
+# Measured RAG
 
 [![ci](https://github.com/phuong-le-tech/rag-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/phuong-le-tech/rag-pipeline/actions/workflows/ci.yml)
 ![python](https://img.shields.io/badge/python-3.12-blue)
