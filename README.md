@@ -5,20 +5,20 @@
 ![next.js](https://img.shields.io/badge/next.js-16-black)
 ![postgres](https://img.shields.io/badge/postgres-17%20%2B%20pgvector-336791)
 
-A retrieval-augmented question answering system built without a RAG framework, where **every
-design choice is backed by a measurement**: hybrid vs dense search, reranking, chunk diversity,
-query rewriting, and a fixed pipeline vs an agent, each decided on 94 reviewed questions plus 15
-unanswerable ones.
-
-Demo corpus: the Kubernetes documentation. The web UI shows every step of an answer: dense and
+Ask questions about the Kubernetes documentation and **watch every step of the answer**: dense and
 keyword search, rank fusion, cross-encoder reranking, the streamed answer and the exact passage
 behind each citation.
+
+Built without a RAG framework so every stage is visible, tested and measured. Every default is
+backed by an evaluation on 94 reviewed questions.
 
 - **Hybrid retrieval**: pgvector (HNSW) + Postgres full-text, fused with Reciprocal Rank Fusion
 - **Cross-encoder reranking** and one-chunk-per-page diversity (+0.15 Hit@5 over plain hybrid)
 - **Cited answers with refusal**: every `[n]` is validated against the passages sent to the
   model; 0 invented citations, 14/15 unanswerable questions refused
-- **Step-by-step UI**: each stage streams over server-sent events with its hits, scores and timing
+- **Glass-box UI**: each stage streams over server-sent events with its hits, scores and timing;
+  drop a Markdown file or paste text to watch it ingested (load, clean, chunk, embed, store) and
+  ask questions over it (kept 24 h, then deleted)
 - **Opt-in agent mode**: a hand-written tool-calling loop (no framework) where the model decides
   what to search and how often; on the same 94 + 15 questions it cuts false refusals from 7 to 1
   for ~2.9× the tokens, so the fixed pipeline stays the default
@@ -187,7 +187,9 @@ protected by the [guards](#security-and-privacy) below.
 | `GET /health` | Liveness: the process is up |
 | `GET /ready` | Readiness: database reachable and index non-empty (503 otherwise) |
 | `GET /api/collection` | Document and chunk counts, LLM and embedding model names |
-| `POST /api/ask` | Answer a question as a server-sent event stream |
+| `GET /api/collection?id=` | Counts for one upload collection (404 if unknown or expired) |
+| `POST /api/collections` | Upload a `.md`/`.txt` file (multipart `file`) or JSON `{"text"}`; streams `stage` events (`load`, `clean`, `chunk`, `embed`, `store`) then `done {collection, docs, chunks}`. Max 1 MB, UTF-8, 300 chunks. Stored up to 24 h, never logged |
+| `POST /api/ask` | Answer a question as a server-sent event stream; optional `collection` (32 hex) asks over an upload |
 
 `POST /api/ask` body: `{"question": "...", "k": 5, "rerank": true, "max_one_per_page": true}`
 (`question` 1-500 characters, `k` 3-10). The response is `text/event-stream`:
@@ -234,6 +236,7 @@ Environment variables (or `.env` locally). Settings use the `RAG_` prefix; API k
 | `RAG_RATE_LIMIT_PER_MINUTE` | `10` | questions per client IP |
 | `RAG_DAILY_LLM_LIMIT` | `300` | LLM calls per UTC day; retrieval keeps working past it |
 | `RAG_MAX_CONCURRENT_ASKS` | `2` | extra requests get `503 busy` |
+| `RAG_UPLOAD_TTL_HOURS` | `24` | uploads older than this are deleted at the next upload |
 
 Web (`web/`, inlined at build time, so changes need a rebuild):
 
@@ -323,7 +326,7 @@ Dockerfile, railway.json, docker-compose.yml
 
 ## Limitations
 
-- **Kubernetes docs only**: uploading your own documents is the next milestone.
+- **Uploads are Markdown or plain text only**: no PDF or URL ingestion yet, and uploads expire after 24 h.
 - **One API replica**: rate limit, budget and concurrency counters live in process memory.
 - **Free LLM**: upstream rate limits can fail an answer (the UI reports it with a retry) and the
   provider may log prompts. Set `RAG_LLM_BACKEND=anthropic` for Claude.

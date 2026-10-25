@@ -2,14 +2,31 @@
 
 Newest first. Each entry: context, decision, consequences. Revisit when evals say otherwise.
 
-## 2026-10-13: Project name "Measured RAG"
-- **Context**: the project is a portfolio piece to show RAG skills. "Glass-box RAG" described the
-  UI, not what sets the project apart, and Kubernetes is only the demo corpus.
-- **Decision**: the product name is **Measured RAG**: every design choice is backed by an
-  evaluation. Kubernetes moves to the subtitle ("demo corpus").
-- **Consequences**: README, web UI titles, the web package name and the API title change. The
-  Python package and the `rag` command, the `GlassBox` component and older log entries keep their
-  names (internal or historical). The GitHub repo can be renamed separately; GitHub redirects.
+## 2026-10-13: Uploads are capability-id collections that expire after 24 h
+**Context.** Visitors should ask questions over their own Markdown/text without accounts, on a
+public demo with a small CPU box and a privacy page that promises not to keep questions.
+**Decision.** `POST /api/collections` creates a collection named by `uuid4().hex`; knowing the id is
+the only access control. Limits: 1 MB, UTF-8, 300 chunks, shared rate limit and slots. Expiry
+is `RAG_UPLOAD_TTL_HOURS` (24), enforced lazily at the start of each upload instead of by a
+scheduler. Multipart is parsed with the stdlib to avoid a new dependency.
+**Consequences.** Anyone who learns an id can read that upload (acceptable for 24 h demo data; ids
+are never logged). Expired rows linger until the next upload happens, so retention is "at most 24 h
+plus until the next upload"; the privacy page says "up to 24 hours". Embedding runs in the request
+thread, so a burst of uploads is bounded by the concurrency slots, not by a queue.
+
+## 2026-10-13: Uploads get their own `collection`, not a second table or database
+**Context.** Phase 5 uploads must not leak into Kubernetes answers, evals or `rag ingest` pruning
+(which deletes every document missing from the run).
+**Decision.** `documents.collection` (default `'k8s'`). Searches filter on it
+(`RetrieverConfig.collection`), `ingest` reads and prunes only its own collection, `/api/collection`
+counts only `k8s`, and `publish_index.sh` deletes only `k8s` rows instead of truncating.
+**Consequences.** Default behaviour is unchanged (same Hit@5 / MRR). A filtered HNSW scan can return
+fewer rows than asked, so iterative scan stays on and an integration test checks it. `source` is
+still globally unique: upload sources must be namespaced. `publish_index.sh` copies explicit ids, so
+publishing into a target that already holds uploads can collide on ids (not handled yet).
+On an existing DB the new column has no planner statistics until autovacuum or
+`ANALYZE documents`; before that the planner may skip HNSW for an exact scan (Hit@5 moved
+0.894 → 0.904 until we analysed).
 
 ## 2026-10-13: Agent mode stays opt-in; answer judge is a free OpenRouter model
 - **Context**: first measured comparison of pipeline and agent on the same 94 answerable and 15

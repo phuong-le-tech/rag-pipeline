@@ -36,6 +36,7 @@ class RetrieverConfig:
     k: int = 10  # results returned
     candidates: int = 50  # results fetched from each first-stage search
     include_generated: bool = True
+    collection: str = "k8s"  # uploads live in their own collection; evals/CLI keep the default
     rrf_k: int = DEFAULT_K
     rerank: bool = False  # cross-encoder re-scores all candidates, then keeps top k
     max_per_source: int | None = None  # cap chunks per page in the final top k
@@ -73,7 +74,13 @@ class Retriever:
 
             def dense() -> list[Hit]:
                 vector = self.embedder.embed_query(query)
-                return dense_search(self.conn, vector, config.candidates, config.include_generated)
+                return dense_search(
+                    self.conn,
+                    vector,
+                    config.candidates,
+                    config.include_generated,
+                    config.collection,
+                )
 
             lists.append(_timed("dense", on_stage, dense))
         if config.mode in ("keyword", "hybrid"):
@@ -82,7 +89,11 @@ class Retriever:
                     "keyword",
                     on_stage,
                     lambda: keyword_search(
-                        self.conn, query, config.candidates, config.include_generated
+                        self.conn,
+                        query,
+                        config.candidates,
+                        config.include_generated,
+                        config.collection,
                     ),
                 )
             )

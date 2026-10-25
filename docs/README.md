@@ -20,7 +20,7 @@ Each chapter follows the same shape:
 | 4 | [Retrieval: dense, keyword, hybrid, RRF, reranking](04-retrieval.md) | ✅ |
 | 5 | [Generation: grounded prompts, citations, refusal](05-generation.md) | ✅ |
 | 6 | [Evaluation: golden sets, metrics, ablations](06-evaluation.md) | ✅ |
-| 7 | [Serving: the web UI, API, streaming, deployment](07-serving.md) | 🚧 Phase 5 (live demo; uploads next) |
+| 7 | [Serving: the glass-box UI, API, streaming, deployment](07-serving.md) | 🚧 Phase 5 (live demo with uploads; PDF/URL next) |
 | 8 | [Agent mode: the model decides what to search](08-agent.md) | 🚧 Loop, CLI and evaluation done; multi-part questions pending owner review |
 
 Reference:

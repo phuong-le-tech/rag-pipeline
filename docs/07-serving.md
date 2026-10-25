@@ -1,8 +1,8 @@
 # 7. Serving: the web UI, API, streaming
 
 > Status: 🚧 the UI in [`web/`](../web/) runs on the **real pipeline** through a FastAPI service
-> ([`src/rag/api/`](../src/rag/api/)) that streams each stage. Kubernetes docs only; uploads are
-> the next Phase 5 step. Deploy runbook: README "Deploy".
+> ([`src/rag/api/`](../src/rag/api/)) that streams each stage. Ask over the Kubernetes docs, or
+> upload a Markdown/text file and watch it being indexed. Deploy runbook: README "Deploy".
 
 ## Concept
 
@@ -65,6 +65,31 @@ Other endpoints: `GET /health` (process alive), `GET /ready` (database reachable
 non-empty: Railway waits for it before routing traffic), `GET /api/collection` (counts, model
 names for the UI footer).
 
+### Uploads ([`src/rag/ingest/upload.py`](../src/rag/ingest/upload.py))
+
+`POST /api/collections` takes a multipart `file` (`.md`/`.txt`) or JSON `{"text"}`, and streams
+the ingest as the same kind of SSE: `stage` events `load → clean → chunk → embed → store` (each
+with `ms` and counts; `chunk` carries the first 3 chunk previews), then
+`done {collection, docs, chunks}`. Ask about it with `POST /api/ask {"collection": "<id>"}`;
+`GET /api/collection?id=` returns its counts.
+
+- **The id is the access control.** `uuid4().hex` is 128 random bits: nobody can guess another
+  visitor's collection, so there are no accounts. The search filter makes an upload invisible to
+  Kubernetes questions and the reverse.
+- **Limits** protect a small CPU box: 1 MB body (checked from `Content-Length` and while reading,
+  before parsing), UTF-8 only (else 422), at most 300 chunks. Uploads share the per-IP rate limit
+  and the concurrency slots with ask. On a laptop, embedding 300 chunks took about 12 s with the
+  local model; the work runs in the request thread, like ask.
+- **No python-multipart.** The multipart body is parsed with the stdlib `email` parser, so the
+  API gains no dependency.
+- **24 h TTL.** The start of each upload deletes upload collections older than
+  `RAG_UPLOAD_TTL_HOURS` (chunks cascade). No scheduler to run; `k8s` is never touched.
+- **Nothing is logged** about an upload but a random id, status and total time: not the text,
+  not the filename.
+
+The generic loader (`load_upload`) skips the Hugo cleaning: it only normalises newlines, takes the
+title from the first H1 (else the filename) and namespaces the source as `upload:<id>/<name>`.
+
 ### Guards ([`src/rag/api/guards.py`](../src/rag/api/guards.py))
 
 A public demo will meet bots and enthusiastic testers. Each guard answers one failure:
@@ -86,7 +111,7 @@ count separately; that's when Redis would be needed.
 
 ### Privacy and logging
 
-The API stores nothing. One JSON log line per ask holds a random id, the status and stage
+The API stores nothing about questions; uploads are kept for up to 24 hours, then deleted. One JSON log line per ask holds a random id, the status and stage
 timings, never the question or the IP (uvicorn's access log, which prints IPs, is disabled in the
 Docker image). The UI says questions go to a third-party model and links `/privacy`; `/legal`
 credits the Kubernetes docs (CC BY 4.0 requires attribution). `next.config.ts` sets a Content
@@ -109,13 +134,23 @@ browser ──► Vercel (Next.js UI) ──► Railway API (FastAPI + ONNX mode
 
 | File | What |
 |---|---|
-| `lib/api.ts` | `getCollection`, `askStream` (fetch + SSE parser), `toChunk`, `splitCitations` |
-| `components/GlassBox.tsx` | maps each SSE event onto the view-model; errors become messages, never a frozen screen |
+| `lib/api.ts` | `getCollection`, `askStream` / `uploadStream` (fetch + SSE parser), `ingestUpdate` (server stage to card), `toChunk`, `splitCitations` |
+| `components/GlassBox.tsx` | maps each SSE event onto the view-model; errors become messages, never a frozen screen; holds the one upload in memory |
 | `components/Panels.tsx`, `Overlays.tsx` | Source, Pipeline, Ask, popovers, settings, ⌘K palette |
 | `app/privacy`, `app/legal` | what is processed and stored, publisher, hosting, content credits |
 
+The Source panel takes a dropped or chosen `.md`/`.txt` file (a button, so the keyboard works) or
+pasted text. The server's five ingest stages fill the four Pipeline cards (`load` + `clean` are
+"Parse"), the first chunk previews open under the Chunk card, and the collection menu then lists
+"Kubernetes docs" plus the upload; picking either clears the conversation, because an answer
+belongs to the collection it was asked of. Asks pass the upload id as `collection`. The id lives
+only in the page's memory: reloading forgets it (the server deletes the data after 24 h anyway).
+413, 422, 429 and 503 each get their own message.
+
 ## Trade-offs
 
+- **One upload per session, in memory.** Simple and private, but a reload loses the handle.
+- **Previews are the first 3 chunks**, what the server sends, not the whole chunk list.
 - **Stages arrive together.** The retriever runs inside one request; the stage events are sent
   as soon as retrieval finishes (~1.5 s), then tokens stream. Timings shown are real.
 - **In-memory guards** mean one replica. Fine for a side project; Redis when traffic grows.
@@ -134,6 +169,8 @@ cd web && npm run dev                # http://localhost:3000
 - Ask "How do I roll back a failed Deployment?", hover `[1]`, compare the Rerank list with Fusion.
 - Ask "Who won the 2018 World Cup?": the model declines and Cite is skipped.
 - Turn rerank off (`R`) and ask again: which passages change, and how much faster is it?
+- Drop a short `.md`, watch Parse to Index fill, open the chunks, ask about it, then switch back
+  to "Kubernetes docs" in the collection menu.
 - Stop the API and reload: the UI says the service is unavailable.
 - `curl -N -X POST localhost:8000/api/ask -H 'content-type: application/json' -d '{"question":"What is a Pod?"}'`
   shows the raw event stream.

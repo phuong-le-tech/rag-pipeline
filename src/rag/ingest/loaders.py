@@ -137,3 +137,27 @@ def iter_documents(root: Path, base_url: str = DOCS_BASE_URL) -> Iterator[Docume
         doc = load_markdown_file(path, root, base_url)
         if doc is not None:
             yield doc
+
+
+UPLOAD_NAME_MAX = 100
+H1_RE = re.compile(r"^#[ \t]+(.+?)[ \t]*$", re.MULTILINE)
+
+
+def load_upload(text: str, filename: str, collection: str) -> Document:
+    """Visitor Markdown/text. No Hugo cleaning: only newline and NUL hygiene."""
+    cleaned = text.replace("\r\n", "\n").replace("\r", "\n").replace("\x00", "").strip()
+    if not cleaned:
+        raise ValueError("upload is empty")
+    name = "".join(c for c in Path(filename.replace("\\", "/")).name if c.isprintable())
+    name = name[:UPLOAD_NAME_MAX] or "pasted.md"
+    h1 = H1_RE.search(cleaned)
+    title = h1.group(1) if h1 else name
+    return Document(
+        source=f"upload:{collection}/{name}",
+        url="",
+        title=title,
+        section="",
+        text=cleaned,
+        content_hash=hashlib.sha256(cleaned.encode("utf-8")).hexdigest(),
+        generated=False,
+    )

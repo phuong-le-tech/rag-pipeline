@@ -13,7 +13,8 @@ from rag import cli
 from rag.config import Settings
 from rag.ingest.loaders import LOADER_VERSION
 
-runner = CliRunner()
+# Typer renders errors in a Rich panel; pin plain, wide output so substring asserts are stable.
+runner = CliRunner(env={"NO_COLOR": "1", "FORCE_COLOR": None, "TERM": "dumb", "COLUMNS": "200"})
 
 
 def test_chunk_reports_counts_for_folder(tmp_path):

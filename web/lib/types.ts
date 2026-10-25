@@ -10,7 +10,7 @@ export type Chunk = {
 export type OutlineItem = { d: number; label: string; id: string };
 
 export type Collection = {
-  id: "k8s";
+  id: string; // "k8s" or the 32-hex id of an upload
   name: string;
   chunks: Chunk[];
   outline: OutlineItem[];

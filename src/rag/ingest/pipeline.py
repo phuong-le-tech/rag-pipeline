@@ -18,8 +18,8 @@ from rag.ingest.chunking import Chunk, chunk_markdown
 from rag.ingest.loaders import Document
 
 UPSERT_DOCUMENT = """
-INSERT INTO documents (source, content_hash, metadata, updated_at)
-VALUES (%s, %s, %s, now())
+INSERT INTO documents (source, content_hash, metadata, collection, updated_at)
+VALUES (%s, %s, %s, %s, now())
 ON CONFLICT (source) DO UPDATE
     SET content_hash = EXCLUDED.content_hash, metadata = EXCLUDED.metadata, updated_at = now()
 RETURNING id
@@ -43,17 +43,23 @@ def embedding_text(chunk: Chunk) -> str:
     return f"{chunk.heading}\n\n{chunk.content}" if chunk.heading else chunk.content
 
 
-def _stored_versions(conn: psycopg.Connection) -> dict[str, tuple[str, str | None]]:
-    rows = conn.execute("SELECT source, content_hash, metadata->>'pipeline' FROM documents")
+def _stored_versions(
+    conn: psycopg.Connection, collection: str
+) -> dict[str, tuple[str, str | None]]:
+    rows = conn.execute(
+        "SELECT source, content_hash, metadata->>'pipeline' FROM documents WHERE collection = %s",
+        (collection,),
+    )
     return {source: (content_hash, pipeline) for source, content_hash, pipeline in rows}
 
 
-def _store(
+def store_document(
     conn: psycopg.Connection,
     doc: Document,
     chunks: Sequence[Chunk],
     vectors: Sequence[Sequence[float]],
     fingerprint: str,
+    collection: str,
 ) -> None:
     metadata = {
         "url": doc.url,
@@ -64,7 +70,7 @@ def _store(
     }
     with conn.transaction():
         doc_id = conn.execute(
-            UPSERT_DOCUMENT, (doc.source, doc.content_hash, Jsonb(metadata))
+            UPSERT_DOCUMENT, (doc.source, doc.content_hash, Jsonb(metadata), collection)
         ).fetchone()[0]
         conn.execute("DELETE FROM chunks WHERE document_id = %s", (doc_id,))
         with conn.cursor() as cur:
@@ -77,9 +83,12 @@ def _store(
             )
 
 
-def _prune(conn: psycopg.Connection, keep: set[str]) -> int:
+def _prune(conn: psycopg.Connection, keep: set[str], collection: str) -> int:
     with conn.transaction():
-        cur = conn.execute("DELETE FROM documents WHERE NOT (source = ANY(%s))", (list(keep),))
+        cur = conn.execute(
+            "DELETE FROM documents WHERE collection = %s AND NOT (source = ANY(%s))",
+            (collection, list(keep)),
+        )
         return cur.rowcount
 
 
@@ -91,8 +100,9 @@ def ingest(
     fingerprint: str,
     prune: bool = True,
     on_progress: Callable[[int], None] | None = None,
+    collection: str = "k8s",
 ) -> IngestStats:
-    stored = _stored_versions(conn)
+    stored = _stored_versions(conn, collection)
     conn.commit()  # end the read so each document gets its own real transaction
 
     added = updated = skipped = total_chunks = 0
@@ -105,7 +115,7 @@ def ingest(
         else:
             chunks = chunk_markdown(doc.text, max_chars)
             vectors = embedder.embed([embedding_text(c) for c in chunks])
-            _store(conn, doc, chunks, vectors, fingerprint)
+            store_document(conn, doc, chunks, vectors, fingerprint, collection)
             total_chunks += len(chunks)
             if previous is None:
                 added += 1
@@ -114,5 +124,5 @@ def ingest(
         if on_progress is not None:
             on_progress(i)
 
-    deleted = _prune(conn, seen) if prune else 0
+    deleted = _prune(conn, seen, collection) if prune else 0
     return IngestStats(added, updated, skipped, deleted, total_chunks)

@@ -386,3 +386,9 @@ button.cite{cursor:pointer}
 .legal ul{list-style:disc;padding-left:20px}
 .legal p,.legal li{color:var(--tx2)}
 .legal strong{color:var(--tx)}
+.drop{cursor:pointer}.drop:disabled{cursor:default;opacity:.6}
+.paste{display:grid;gap:var(--sp2)}
+.paste textarea{width:100%;resize:vertical;min-height:72px;padding:var(--sp2) var(--sp3);border:1px solid var(--bd2);border-radius:var(--r3);background:var(--s2);line-height:1.5}
+.paste textarea:focus-visible{outline:2px solid var(--ac);outline-offset:1px}
+.paste .btn{justify-self:start}
+.collbtn:disabled{opacity:.6;cursor:default}

@@ -62,6 +62,10 @@ dominates. 60 comes from the original paper (Cormack et al., 2009) and is a robu
 `RetrieverConfig(mode, k, candidates, include_generated, rrf_k)`: every field is a switch the
 eval harness will flip, so each choice becomes a row in the ablation table.
 
+Every search is scoped to one **collection** (`RetrieverConfig.collection`, default `"k8s"`):
+`d.collection = %(collection)s` sits next to the generated-page filter in both queries, so
+uploaded documents can never surface in Kubernetes answers or evals.
+
 ### Dense search details
 
 ```sql

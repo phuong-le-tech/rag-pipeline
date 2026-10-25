@@ -24,6 +24,9 @@ goes; `--resume` skips finished ids, so a stopped run does not re-spend API quot
 
 **Chunk**: a passage of a document; the unit that is embedded, retrieved and cited.
 
+**Collection**: a named set of documents in one index (`documents.collection`). Kubernetes docs
+are `k8s`; uploads get their own. Searches, ingest versions and pruning are scoped to one.
+
 **Citation coverage**: share of answer sentences that carry at least one `[n]` citation.
 
 **Contextual chunk header**: prepending the document title / heading path to a chunk before
@@ -124,6 +127,8 @@ IP) so one user or bot can't monopolise the service.
 
 **Readiness probe**: an endpoint (`/ready`) the host checks before sending traffic; ours fails
 until the database is reachable and the index is non-empty.
+
+**Capability id**: an unguessable random identifier (here the 32-hex upload collection id) whose possession is the only access check. Fine for short-lived demo data, wrong for anything that needs revocation or audit.
 
 **Tool call**: a model turn that asks the app to run a named function with JSON arguments (here: `search_docs`) instead of answering. The app runs it and sends back a tool result; the model then continues. Our `ToolCall` and `Turn` types hold this in a provider-neutral shape.
 
