@@ -1,5 +1,5 @@
 "use client";
-import { type ReactNode, useRef } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import type { Chunk, StageState } from "@/lib/types.ts";
 import { Icon, Md } from "./Icons";
 import { cx, fmtMs, type IngKey, type Msg, type QKey, type Store, STL } from "./store";
@@ -24,32 +24,22 @@ const collSub = (c: { docs: number; total: number }) => `${c.docs.toLocaleString
 export function SourcePanel({ S, A }: P) {
   const busy = S.phase === "ingesting" || S.busy;
   const fileIn = useRef<HTMLInputElement>(null);
+  const [paste, setPaste] = useState(false);
   const take = (f?: File) => { if (f && !busy) void A.upload(f); };
   return (
-    <section className="panel" id="p-src" aria-labelledby="h-src">
-      <div className="ph"><span className="num">01</span><h2 id="h-src">Source</h2></div>
-      <div className="pb src-b" id="src">
-        <button className="drop" type="button" disabled={busy} onClick={() => fileIn.current?.click()}
+    <section className="panel strip-src" id="p-src" aria-label="Source">
+      <div className="src-row" id="src">
+        <button className="btn drop" type="button" disabled={busy} onClick={() => fileIn.current?.click()}
           onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add("over"); }}
           onDragLeave={(e) => e.currentTarget.classList.remove("over")}
           onDrop={(e) => { e.preventDefault(); e.currentTarget.classList.remove("over"); take(e.dataTransfer.files[0]); }}>
-          <span className="dz-t">Drop a Markdown file, or press to choose</span>
-          <span className="dz-s">.md or .txt, up to 1 MB. Kept for up to 24 hours, then deleted.</span>
+          Drop file
         </button>
         <input ref={fileIn} type="file" accept=".md,.markdown,.txt,text/markdown,text/plain" hidden aria-label="Choose a Markdown or text file"
           onChange={(e) => { take(e.target.files?.[0]); e.target.value = ""; }} />
-        <form className="paste" onSubmit={(e) => {
-          e.preventDefault();
-          const t = String(new FormData(e.currentTarget).get("text") || "").trim();
-          if (t && !busy) { const f = e.currentTarget; void A.upload(t).then((ok) => ok && f.reset()); }
-        }}>
-          <label className="lbl" htmlFor="paste-in">Or paste text</label>
-          <textarea id="paste-in" name="text" rows={4} spellCheck={false} disabled={busy} placeholder="# Notes&#10;Paste Markdown or plain text here" />
-          <button className="btn" type="submit" disabled={busy}>Index this text</button>
-        </form>
-        {S.srcError && <div className="errbox" role="alert"><div className="et"><Icon name="alert" /><span>{S.srcError}</span></div></div>}
-        <div className="od-stack" style={{ "--od-gap": "12px" } as React.CSSProperties}>
-          <div className="or">collection</div>
+        <button className="btn" type="button" disabled={busy} aria-expanded={paste} aria-controls="paste-form" onClick={() => setPaste(!paste)}>Paste text</button>
+        <span className="src-cap">.md or .txt, up to 1 MB. Kept for up to 24 hours, then deleted.</span>
+        <div className="colls">
           <button className="collbtn" type="button" disabled={busy} onClick={() => A.pick("k8s")} aria-pressed={S.col?.id === "k8s"}>
             <span className="t">Kubernetes docs</span>
             <span className="s mono">{S.info && S.col?.id === "k8s" ? collSub(S.col) : S.apiDown ? "API unreachable · retry" : S.info ? "switch back" : "loading…"}</span>
@@ -62,6 +52,18 @@ export function SourcePanel({ S, A }: P) {
           )}
         </div>
       </div>
+      {paste && (
+        <form className="paste" id="paste-form" onSubmit={(e) => {
+          e.preventDefault();
+          const t = String(new FormData(e.currentTarget).get("text") || "").trim();
+          if (t && !busy) { const f = e.currentTarget; void A.upload(t).then((ok) => { if (ok) { f.reset(); setPaste(false); } }); }
+        }}>
+          <label className="lbl" htmlFor="paste-in">Paste text</label>
+          <textarea id="paste-in" name="text" rows={4} spellCheck={false} disabled={busy} placeholder="# Notes&#10;Paste Markdown or plain text here" />
+          <button className="btn" type="submit" disabled={busy}>Index this text</button>
+        </form>
+      )}
+      {S.srcError && <div className="errbox src-err" role="alert"><div className="et"><Icon name="alert" /><span>{S.srcError}</span></div></div>}
     </section>
   );
 }
@@ -110,8 +112,9 @@ function Explain() {
   );
 }
 
+const SHOWN = 5; // rows per retrieval list; the rest collapse to "+N more"
 const Bar = ({ v, i }: { v: number; i: number }) => (
-  <div className="bar"><i style={{ "--v": Math.max(0, Math.min(1, v)).toFixed(3), "--i": i } as React.CSSProperties} /></div>
+  <div className="bar od-fixed"><i style={{ "--v": Math.max(0, Math.min(1, v)).toFixed(3), "--i": i } as React.CSSProperties} /></div>
 );
 const Skel = () => <>{Array.from({ length: 5 }, (_, i) => <li key={i} className="hit sk"><div className="skl" /></li>)}</>;
 
@@ -133,15 +136,17 @@ function QueryFlow({ S, h }: P) {
   const search = (k: QKey, n: string, name: string, sub: string, arr: { c: Chunk; s: number }[], f: (v: number) => string) => {
     const m = Math.max(...arr.map((x) => x.s), 1e-9);
     return (
-      <section className={cls(k)} data-st={st[k].st} aria-label={name}>
+      <section className={cls(k)} id={`st-${k}`} data-st={st[k].st} aria-label={name}>
         <QH n={n} name={name} sub={sub} k={k} />
         <ol className="hits">
-          {st[k].st !== "done" ? <Skel /> : arr.length ? arr.map((x, i) => (
-            <Row key={x.c.id} c={x.c} i={i}>
-              <div className="od-row"><span className="rk mono">{i + 1}</span><span className="lb od-fill od-truncate">{label(x.c)}</span><span className="sc mono od-fixed">{f(x.s)}</span></div>
-              <Bar v={x.s / m} i={i} />
-            </Row>
-          )) : <li className="hit none">No match for these terms.</li>}
+          {st[k].st !== "done" ? <Skel /> : arr.length ? <>
+            {arr.slice(0, SHOWN).map((x, i) => (
+              <Row key={x.c.id} c={x.c} i={i}>
+                <div className="od-row"><span className="rk mono">{i + 1}</span><span className="lb od-fill od-truncate" title={label(x.c)}>{label(x.c)}</span><Bar v={x.s / m} i={i} /><span className="sc mono od-fixed">{f(x.s)}</span></div>
+              </Row>
+            ))}
+            {arr.length > SHOWN && <li className="more">+{arr.length - SHOWN} more</li>}
+          </> : <li className="hit none">No match for these terms.</li>}
         </ol>
       </section>
     );
@@ -160,24 +165,26 @@ function QueryFlow({ S, h }: P) {
       <div className="sec-h"><h3 className="lbl">Query</h3></div>
       <p className="qq">“<q style={{ quotes: "none" }}>{q.text}</q>”</p>
       <div className="qflow">
+        <h3 className="grp">Retrieve</h3>
         <div className="row2">
-          {search("dense", "01", "Dense search", "pgvector · cosine · 384-dim", R.dense, (v) => v.toFixed(3))}
-          {search("keyword", "02", "Keyword search", "Postgres FTS · ts_rank", R.kw, (v) => v.toFixed(2))}
+          {search("dense", "05", "Dense search", "pgvector · cosine · 384-dim", R.dense, (v) => v.toFixed(3))}
+          {search("keyword", "06", "Keyword search", "Postgres FTS · ts_rank", R.kw, (v) => v.toFixed(2))}
         </div>
-        <section className={cls("fusion")} data-st={st.fusion.st} aria-label="Fusion">
-          <QH n="03" name="Fusion (RRF)" sub="reciprocal rank fusion · k=60" k="fusion" />
+        <h3 className="grp">Fuse and rank</h3>
+        <section className={cls("fusion")} id="st-fusion" data-st={st.fusion.st} aria-label="Fusion">
+          <QH n="07" name="Fusion (RRF)" sub="reciprocal rank fusion · k=60" k="fusion" />
           {st.fusion.st === "done" ? (
             <>
               <ol className="hits">
                 {R.fusion.slice(0, 6).map((f, i) => (
                   <Row key={f.c.id} c={f.c} i={i}>
                     <div className="od-row">
-                      <span className="rk mono">{i + 1}</span><span className="lb od-fill od-truncate">{label(f.c)}</span>
+                      <span className="rk mono">{i + 1}</span><span className="lb od-fill od-truncate" title={label(f.c)}>{label(f.c)}</span>
                       <span className="fd mono od-fixed">D{f.d || "-"} · K{f.k || "-"}</span>
                       {!S.set.rerank && f.tag === "ctx" && <span className="tag ctx od-fixed">context</span>}
+                      <Bar v={f.rrf / fmx} i={i} />
                       <span className="sc mono od-fixed">{f.rrf.toFixed(4)}</span>
                     </div>
-                    <Bar v={f.rrf / fmx} i={i} />
                   </Row>
                 ))}
               </ol>
@@ -185,8 +192,8 @@ function QueryFlow({ S, h }: P) {
             </>
           ) : <ol className="hits"><Skel /></ol>}
         </section>
-        <section className={cls("rerank")} data-st={st.rerank.st} aria-label="Rerank">
-          <QH n="04" name="Rerank" sub="cross-encoder · ms-marco-MiniLM-L-6" k="rerank" />
+        <section className={cls("rerank")} id="st-rerank" data-st={st.rerank.st} aria-label="Rerank">
+          <QH n="08" name="Rerank" sub="cross-encoder · ms-marco-MiniLM-L-6" k="rerank" />
           {st.rerank.st === "skipped" ? <p className="note">Rerank is off. Fusion order goes straight to the generator. Toggle it with <kbd>R</kbd>.</p>
             : st.rerank.st === "done" ? (
               <>
@@ -196,12 +203,12 @@ function QueryFlow({ S, h }: P) {
                     return (
                       <li key={r.c.id} className={cx("hit", r.tag === "ctx" && "in-ctx", h(r.c.id))} data-chunk={r.c.id} style={{ "--i": i } as React.CSSProperties}>
                         <div className="od-row">
-                          <span className="rk mono">{i + 1}</span><span className="lb od-fill od-truncate">{label(r.c)}</span>
+                          <span className="rk mono">{i + 1}</span><span className="lb od-fill od-truncate" title={label(r.c)}>{label(r.c)}</span>
                           {r.tag === "ctx" ? <span className="tag ctx od-fixed">context</span> : r.tag === "drop" ? <span className="tag drop od-fixed">same page</span> : null}
                           <span className={cx("chg od-fixed", d > 0 && "up", d < 0 && "down")} aria-label={d > 0 ? `up ${d}` : d < 0 ? `down ${-d}` : "unchanged"}>{d > 0 ? "↑" + d : d < 0 ? "↓" + -d : "="}</span>
+                          <Bar v={r.s} i={i} />
                           <span className="sc mono od-fixed">{r.s.toFixed(2)}</span>
                         </div>
-                        <Bar v={r.s} i={i} />
                       </li>
                     );
                   })}
@@ -210,8 +217,9 @@ function QueryFlow({ S, h }: P) {
               </>
             ) : <ol className="hits"><Skel /></ol>}
         </section>
-        <section className={cls("generate")} data-st={go} aria-label="Generate">
-          <QH n="05" name="Generate" sub={S.info?.llm_model || ""} k="generate" />
+        <h3 className="grp">Generate</h3>
+        <section className={cls("generate")} id="st-generate" data-st={go} aria-label="Generate">
+          <QH n="09" name="Generate" sub={S.info?.llm_model || ""} k="generate" />
           {go === "waiting" ? <p className="note">Waits for the reranked context.</p>
             : go === "running" ? <><p className="note">Streaming from {S.info?.llm_model || "the model"} · <span className="mono">{q.tok}</span> tokens out</p>{chips}</>
             : go === "done" ? <><p className="note">Answer complete · <span className="mono">{q.tout}</span> tokens out</p>{chips}</>
@@ -219,14 +227,14 @@ function QueryFlow({ S, h }: P) {
             : <><p className="note">No answer this time. Retrieval results are kept.</p>{chips}</>}
         </section>
         <section className={cls("cite")} data-st={st.cite.st} aria-label="Cite">
-          <QH n="06" name="Cite" sub="only cited passages are listed as sources" k="cite" />
+          <QH n="" name="Cite" sub="only cited passages are listed as sources" k="cite" />
           {st.cite.st === "done" ? (
             <ol className="hits">
               {R.ctx.map((c, i) => {
                 const ci = cites.find((x) => x.id === c.id);
                 return (
                   <Row key={c.id} c={c} i={i}>
-                    <div className="od-row"><span className="cite od-fixed">{ci ? ci.n : "-"}</span><span className="lb od-fill od-truncate">{label(c)}</span><span className={cx("tag od-fixed", ci && "on")}>{ci ? "cited" : "not cited"}</span></div>
+                    <div className="od-row"><span className="cite od-fixed">{ci ? ci.n : "-"}</span><span className="lb od-fill od-truncate" title={label(c)}>{label(c)}</span><span className={cx("tag od-fixed", ci && "on")}>{ci ? "cited" : "not cited"}</span></div>
                   </Row>
                 );
               })}
@@ -238,21 +246,116 @@ function QueryFlow({ S, h }: P) {
   );
 }
 
+const fmtT = (x: number) => (x ? (x >= 1000 ? (x / 1000).toFixed(2) + " s" : Math.round(x) + " ms") : "-");
+const reducedMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+// Stages the cited chunk passed through, with its rank at each: drives the rail while a chunk is hovered or pinned.
+const traceOf = (S: Store): Partial<Record<string, string>> => {
+  const id = S.hl, q = S.q;
+  if (!id || !q) return {};
+  const R = q.R, t: Partial<Record<string, string>> = {};
+  const at = (a: { c: Chunk }[]) => a.findIndex((x) => x.c.id === id) + 1;
+  const m = S.msgs[S.msgs.length - 1];
+  const ci = m && m.role === "a" ? m.cites.find((x) => x.id === id) : undefined;
+  const rk: [string, number][] = [["dense", at(R.dense)], ["keyword", at(R.kw)], ["fusion", at(R.fusion)], ["rerank", at(R.rerank)]];
+  rk.forEach(([k, n]) => { if (n) t[k] = "#" + n; });
+  if (ci) t.generate = `[${ci.n}]`;
+  else if (R.ctx.some((c) => c.id === id)) t.generate = "ctx";
+  return t;
+};
+
+const RAIL: [string, string, string][] = [
+  ["ing", "1", "Parse"], ["ing", "2", "Chunk"], ["ing", "3", "Embed"], ["ing", "4", "Index"],
+  ["dense", "5", "Dense"], ["keyword", "6", "Keyword"], ["fusion", "7", "Fusion"], ["rerank", "8", "Rerank"], ["generate", "9", "Generate"],
+];
+const DIVIDE_AFTER = new Set(["4", "6", "8"]);
+
+function Rail({ S }: { S: Store }) {
+  const t = traceOf(S);
+  const [here, setHere] = useState("ing");
+  useEffect(() => {
+    const pipe = document.getElementById("pipe");
+    if (!pipe) return;
+    let raf = 0;
+    const on = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        let cur = "ing";
+        const y = pipe.scrollTop + 24;
+        for (const [k] of RAIL) { const el = document.getElementById("st-" + k); if (el && el.offsetTop <= y) cur = k; }
+        if (pipe.scrollTop + pipe.clientHeight >= pipe.scrollHeight - 2) cur = "generate";
+        setHere(cur);
+      });
+    };
+    pipe.addEventListener("scroll", on, { passive: true });
+    on();
+    return () => { pipe.removeEventListener("scroll", on); cancelAnimationFrame(raf); };
+  }, [S.q]);
+  const go = (k: string) => {
+    const pipe = document.getElementById("pipe"), el = document.getElementById("st-" + k);
+    if (pipe && el) pipe.scrollTo({ top: el.offsetTop - 8, behavior: reducedMotion() ? "auto" : "smooth" });
+  };
+  let lit = 0;
+  return (
+    <nav className="stg-rail" aria-label="Pipeline stages">
+      {RAIL.map(([k, n, name]) => {
+        const r = t[k];
+        const i = r ? lit++ : 0;
+        return (
+          <span key={n} className="rail-seg">
+            <button type="button" className={cx("it", r && "lit", here === k && (k !== "ing" || n === "1") && "here")} style={{ "--i": i } as React.CSSProperties}
+              onClick={() => go(k)} aria-label={`Go to stage ${n}, ${name}${r ? `, cited chunk at ${r}` : ""}`}>
+              <span className="n">{n}</span><span>{name}</span>{r && <span className="rk">{r}</span>}
+            </button>
+            {DIVIDE_AFTER.has(n) && <i className="dv" aria-hidden="true" />}
+          </span>
+        );
+      })}
+    </nav>
+  );
+}
+
+function Hero({ S }: { S: Store }) {
+  const q = S.q!, R = q.R, s = S.stats;
+  const m = S.msgs[S.msgs.length - 1];
+  const a = m && m.role === "a" ? m : null;
+  const cited = a ? a.cites.length : 0;
+  const seg: [string, number][] = s ? [["retrieve", s.retrieve], ["rerank", s.rerank], ["generate", s.gen]] : [];
+  const slow = Math.max(...seg.map((x) => x[1]), 0);
+  const sum = !s && a?.status !== "error" ? "Running the pipeline…"
+    : a?.status === "error" ? "Retrieval finished. The model call failed, and the results are kept."
+    : a?.status === "refusal" ? "No passage answered the question, so the model declined."
+    : `${S.set.rerank ? `${R.rerank.length} of ${R.fusion.length} candidates were reranked` : `${R.fusion.length} candidates were fused`}, ${R.ctx.length} reached the model${cited ? ` and ${cited === R.ctx.length ? "all " : ""}${cited} ${cited === 1 ? "was" : "were"} cited` : ""}`;
+  return (
+    <div className="hero-band">
+      <div className="hero-fig mono">{s ? fmtT(s.total) : "-"}<small>total latency</small></div>
+      <div className="hero-r">
+        <p className="hero-sum">{sum}</p>
+        {s && (
+          <>
+            <div className="tbar" role="img" aria-label={seg.map(([k, v]) => `${k} ${fmtT(v)}`).join(", ")}>
+              {seg.map(([k, v]) => <i key={k} className={v === slow ? "max" : ""} style={{ "--w": Math.max(v, 1) } as React.CSSProperties} />)}
+            </div>
+            <div className="tleg mono">{seg.map(([k, v]) => <span key={k}><i className={v === slow ? "max" : ""} />{k} {fmtT(v)}</span>)}</div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function PipelinePanel(p: P) {
   const { S, A, h } = p;
-  const pstate = S.phase === "ingesting" ? ["busy", "Connecting"] : S.apiDown ? ["idle", "Offline"] : S.busy ? ["busy", "Answering"] : S.phase === "ready" ? ["ready", "Ready"] : ["idle", "Idle"];
   const c = S.col;
   return (
-    <section className="panel hero" id="p-pipe" aria-labelledby="h-pipe">
-      <div className="ph">
-        <span className="num">02</span><h2 id="h-pipe">Pipeline</h2><span className="grow" />
-        <span className="pstate" data-s={pstate[0]}><i /><span>{pstate[1]}</span></span>
-      </div>
+    <section className="panel pipeline" id="p-pipe" aria-label="Pipeline">
+      {S.q ? <Hero S={S} /> : <div />}
+      {S.q ? <Rail S={S} /> : <div />}
       <div className="pipe-b" id="pipe">
         <div>{S.phase === "empty" && !S.q && <Explain />}</div>
         <div>
-          <div className="sec-h"><h3 className="lbl">Ingest</h3><span className="cap">{c && S.phase === "ready" ? (c.id === "k8s" ? "Kubernetes docs · indexed ahead of time" : `${c.name} · deleted after 24 h`) : ""}</span></div>
-          <div className="ing-grid">{ING.map(([k, name], i) => <IngCard key={k} {...p} i={i} k={k} name={name} />)}</div>
+          <div className="sec-h"><h3 className="grp">Ingest</h3><span className="cap">{c && S.phase === "ready" ? (c.id === "k8s" ? "Kubernetes docs · indexed ahead of time" : `${c.name} · deleted after 24 h`) : ""}</span></div>
+          <div className="ing-grid" id="st-ing">{ING.map(([k, name], i) => <IngCard key={k} {...p} i={i} k={k} name={name} />)}</div>
           {S.chunkOpen && S.ing?.chunk.st === "done" && c && (
             <div className="strip-wrap" id="strip">
               <div className="od-rail strip" role="list" aria-label="Chunks">
@@ -364,8 +467,7 @@ export function AskPanel({ S, A, h, chatRef, inputRef }: P & { chatRef: React.Re
     A.ask(v);
   };
   return (
-    <section className="panel ask" id="p-ask" aria-labelledby="h-ask">
-      <div className="ph"><span className="num">03</span><h2 id="h-ask">Ask</h2></div>
+    <section className="panel ask" id="p-ask" aria-label="Ask">
       <div className="chat" id="chat" ref={chatRef} role="log" aria-live="polite" aria-label="Conversation">{body}</div>
       <form className="composer" autoComplete="off" onSubmit={(e) => { e.preventDefault(); submit(); }}>
         <label htmlFor="ask-in">Question</label>
@@ -386,17 +488,19 @@ export function AskPanel({ S, A, h, chatRef, inputRef }: P & { chatRef: React.Re
 /* ---------- run stats ---------- */
 export function RunStats({ S }: { S: Store }) {
   const s = S.stats;
-  const t = (x: number) => (x ? (x >= 1000 ? (x / 1000).toFixed(2) + " s" : Math.round(x) + " ms") : "-");
-  const F = ({ l, v, c }: { l: string; v: string; c?: string }) => <div className={cx("fs od-row", c)}><span className="fl">{l}</span><span className="fv mono">{v}</span></div>;
+  const t = fmtT;
+  const pstate = S.phase === "ingesting" ? ["busy", "Connecting"] : S.apiDown ? ["idle", "Offline"] : S.busy ? ["busy", "Answering"] : S.phase === "ready" ? ["ready", "Ready"] : ["idle", "Idle"];
+  const F = ({ l, v, c }: { l: string; v: string; c?: string }) => <div className={cx("fs od-row", c)}><span className="fl">{l}</span><span className="fv mono" title={v}>{v}</span></div>;
   return (
     <footer className="runstats" aria-label="Run stats">
+      <div className="fs od-row pstate" data-s={pstate[0]}><i /><span>{pstate[1]}</span></div>
       <F l="Total latency" v={s ? t(s.total) : "-"} />
       <F l="Retrieve" v={s ? t(s.retrieve) : "-"} />
       <F l="Rerank" v={s ? t(s.rerank) : "-"} />
       <F l="Generate" v={s ? t(s.gen) : "-"} />
       <F l="Tokens out" v={s ? String(s.tout) : "-"} />
-      <F l="Model" v={S.info?.llm_model || "-"} />
-      <F l="Embedding" v={S.info ? `${S.info.embedding_model} · 384-dim` : "-"} c="right" />
+      <F l="Model" v={S.info?.llm_model || "-"} c="shrink" />
+      <F l="Embedding" v={S.info ? `${S.info.embedding_model} · 384-dim` : "-"} c="right shrink" />
       <div className="fs od-row credits">
         <span>Docs © <a href="https://github.com/kubernetes/website">The Kubernetes Authors</a> · <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a></span>
         <a href="/legal">Legal</a>
