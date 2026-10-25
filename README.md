@@ -34,7 +34,7 @@ experiments) and record every measured decision.
 [How it works](#how-it-works) · [Results](#results) · [Getting started](#getting-started) ·
 [CLI](#cli) · [API](#api) · [Configuration](#configuration) · [Deployment](#deployment) ·
 [Security and privacy](#security-and-privacy) · [Testing](#testing) · [Project layout](#project-layout) ·
-[Limitations](#limitations) · [Credits](#credits)
+[Limitations](#limitations) · [License](#license) · [Credits](#credits)
 
 ## How it works
 
@@ -171,7 +171,7 @@ uv run rag ask "How do I roll back a deployment?"
 | `rag ingest CORPUS_ROOT [--no-prune]` | Incremental load → chunk → embed → store |
 | `rag search QUERY [--mode dense\|keyword\|hybrid] [--rerank] [-k N] [--no-generated]` | Ranked passages, no LLM |
 | `rag ask QUESTION [-k N] [--rewrite] [--no-rerank]` | Cited answer, streamed |
-| `rag ask QUESTION --agent [--no-rerank]` | Agent mode: the LLM decides what to search and how many passages (k 1–10) per search; each step printed; answer not streamed |
+| `rag ask QUESTION --agent [--no-rerank]` | Agent mode: the LLM decides what to search and how many passages (k 1-10) per search; each step printed; answer not streamed |
 | `rag eval [--config NAME] [--limit N]` | Retrieval metrics per configuration, split by question origin |
 | `rag eval-answers [--config NAME] [--judge-backend B] [--mode agent] [--judge-model ID] [--judge-max-tokens N] [--resume FILE]` | Faithfulness, correctness, citations, refusals (LLM judge) |
 | `rag draft-questions --n N --seed S` | LLM-drafted golden questions (resumable) |
@@ -192,7 +192,7 @@ protected by the [guards](#security-and-privacy) below.
 | `POST /api/ask` | Answer a question as a server-sent event stream; optional `collection` (32 hex) asks over an upload |
 
 `POST /api/ask` body: `{"question": "...", "k": 5, "rerank": true, "max_one_per_page": true}`
-(`question` 1–500 characters, `k` 3–10). The response is `text/event-stream`:
+(`question` 1-500 characters, `k` 3-10). The response is `text/event-stream`:
 
 | Event | Payload |
 |---|---|
@@ -217,19 +217,19 @@ Environment variables (or `.env` locally). Settings use the `RAG_` prefix; API k
 | Variable | Default | Notes |
 |---|---|---|
 | `RAG_DATABASE_URL` | `postgresql://rag:rag@localhost:5433/rag` | |
-| `OPENROUTER_API_KEY` | – | needed for answers with the default backend |
+| `OPENROUTER_API_KEY` | - | needed for answers with the default backend |
 | `RAG_LLM_BACKEND` | `openrouter` | `anthropic` (needs `ANTHROPIC_API_KEY`), `fake` (tests) |
 | `RAG_OPENROUTER_MODEL` | `nvidia/nemotron-3-super-120b-a12b:free` | |
 | `RAG_LLM_MODEL` | `claude-sonnet-5-5` | Anthropic backend only |
 | `RAG_LLM_TIMEOUT_S` | `60` | per LLM request |
 | `RAG_AGENT_BACKEND` | unset (= `RAG_LLM_BACKEND`) | `--agent` only: `anthropic`, `openrouter`, `fake` |
 | `RAG_AGENT_MODEL` | unset (= the backend's model) | `--agent` only |
-| `RAG_AGENT_MAX_STEPS` | `4` | `--agent` only: steps per question (searches, invalid calls, empty replies) (1–10) |
+| `RAG_AGENT_MAX_STEPS` | `4` | `--agent` only: steps per question (searches, invalid calls, empty replies) (1-10) |
 | `RAG_AGENT_TIMEOUT_S` | `90` | `--agent` only: checked between model turns |
 | `RAG_AGENT_MAX_TOTAL_TOKENS` | `30000` | `--agent` only: input + output tokens per question |
 | `RAG_EMBEDDING_BACKEND` | `local` | `openai` (needs `OPENAI_API_KEY`, dim 1536), `fake` |
 | `RAG_EMBEDDING_DIM` | `384` | must match the embedding model |
-| `RAG_EMBEDDING_THREADS` | unset | ONNX threads for embedder and reranker; 4–6 recommended |
+| `RAG_EMBEDDING_THREADS` | unset | ONNX threads for embedder and reranker; 4-6 recommended |
 | `RAG_RERANKER_MODEL` | `Xenova/ms-marco-MiniLM-L-6-v2` | |
 | `RAG_CHUNK_MAX_CHARS` | `1500` | changing it re-embeds everything on next ingest |
 | `RAG_CORS_ORIGINS` | `http://localhost:3000` | comma-separated origins allowed to call the API |
@@ -257,7 +257,7 @@ dashboard, never in the repo.
    ```bash
    scripts/publish_index.sh "<public DATABASE_URL>"   # prints 1,652 docs / 17,730 chunks
    ```
-   The index is copied with `pg_dump` (~15 s) instead of re-embedded (35–60 min).
+   The index is copied with `pg_dump` (~15 s) instead of re-embedded (35-60 min).
 3. **API**: add a Railway service from this repo (it uses [`railway.json`](railway.json) and the
    [`Dockerfile`](Dockerfile)). Set `RAG_DATABASE_URL=${{Postgres.DATABASE_URL}}`,
    `OPENROUTER_API_KEY`, `RAG_CORS_ORIGINS=https://<your-vercel-domain>` and
@@ -274,7 +274,7 @@ dashboard, never in the repo.
 
 | Measure | What it does |
 |---|---|
-| Input validation | questions 1–500 characters, `k` 3–10, rejected with 422 before any model runs |
+| Input validation | questions 1-500 characters, `k` 3-10, rejected with 422 before any model runs |
 | Rate limit | 10 questions per minute per client IP, keyed on the IP the edge proxy adds (not the client-supplied part of `X-Forwarded-For`) |
 | Daily LLM budget | 300 model calls per UTC day, so credits can't be drained |
 | Concurrency cap | 2 answers at once; slots are always released, even when a client disconnects early |
@@ -326,7 +326,7 @@ Dockerfile, railway.json, docker-compose.yml
 
 ## Limitations
 
-- **Kubernetes docs only**: uploading your own documents is the next milestone.
+- **Uploads are Markdown or plain text only**: no PDF or URL ingestion yet, and uploads expire after 24 h.
 - **One API replica**: rate limit, budget and concurrency counters live in process memory.
 - **Free LLM**: upstream rate limits can fail an answer (the UI reports it with a retry) and the
   provider may log prompts. Set `RAG_LLM_BACKEND=anthropic` for Claude.
@@ -334,6 +334,10 @@ Dockerfile, railway.json, docker-compose.yml
 - **Stage events arrive together** once retrieval finishes (~1.5 s), then the answer streams.
 - **Agent mode is opt-in and slower**: median latency about 11 s against 5 s, and its citations
   are sparser (22% of sentences cited against 46% for the pipeline).
+
+## License
+
+Code: [MIT](LICENSE).
 
 ## Credits
 

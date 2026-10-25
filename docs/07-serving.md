@@ -1,4 +1,4 @@
-# 7. Serving: the glass-box UI, API, streaming
+# 7. Serving: the web UI, API, streaming
 
 > Status: 🚧 the UI in [`web/`](../web/) runs on the **real pipeline** through a FastAPI service
 > ([`src/rag/api/`](../src/rag/api/)) that streams each stage. Ask over the Kubernetes docs, or
@@ -28,7 +28,7 @@ Two ideas carry it:
 
 ### Why streaming, and why server-sent events
 
-Answering takes a few seconds (rerank ~1.5 s, the free LLM 3–6 s). The UI needs results *while*
+Answering takes a few seconds (rerank ~1.5 s, the free LLM 3-6 s). The UI needs results *while*
 they happen, so the server pushes updates:
 
 | | Polling | Server-sent events (SSE) | WebSocket |
@@ -96,7 +96,7 @@ A public demo will meet bots and enthusiastic testers. Each guard answers one fa
 
 | Guard | Default | Protects against |
 |---|---|---|
-| Input validation | 1–500 chars, `k` 3–10 | huge prompts, nonsense configs (HTTP 422) |
+| Input validation | 1-500 chars, `k` 3-10 | huge prompts, nonsense configs (HTTP 422) |
 | Rate limit per IP | 10 / minute | one person or bot hammering the API (HTTP 429 + `Retry-After`). Keyed on the *last* `X-Forwarded-For` entry, the one Railway's edge adds: earlier entries are written by the client and could be forged |
 | Daily LLM budget | 300 calls / UTC day | draining the OpenRouter credits; retrieval keeps working |
 | Concurrency cap | 2 asks at once | CPU exhaustion: the reranker uses all cores (HTTP 503 "busy") |
@@ -126,7 +126,7 @@ browser ──► Vercel (Next.js UI) ──► Railway API (FastAPI + ONNX mode
 
 - The index is **copied, not rebuilt**: `scripts/publish_index.sh` dumps `documents` + `chunks`
   (vectors included) from the local database into Railway's. Re-embedding 17,730 chunks would
-  take 35–60 CPU minutes; copying takes ~15 seconds.
+  take 35-60 CPU minutes; copying takes ~15 seconds.
 - The Docker image bakes in the embedding and reranker models, so a cold start doesn't download
   150 MB before answering.
 

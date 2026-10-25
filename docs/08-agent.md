@@ -33,9 +33,9 @@ that tool result, so the citation rules from chapter 5 still apply.
 - [`src/rag/agent/loop.py`](../src/rag/agent/loop.py): `run_agent` yields a `ToolCallEvent` and
   `ToolResultEvent` for each step, then one `AgentResult`. The CLI prints the steps as they arrive.
 - [`src/rag/agent/tools.py`](../src/rag/agent/tools.py): the `search_docs` schema and
-  `parse_search_args`. Bad arguments (not JSON, empty query, `k` outside 1–10) become an error
+  `parse_search_args`. Bad arguments (not JSON, empty query, `k` outside 1-10) become an error
   sentence the model reads, not a crash. `SearchTool` runs retrieval with the model's `k`. The
-  CLI's `-k` does not apply in agent mode: the model picks `k` (1–10) for each search.
+  CLI's `-k` does not apply in agent mode: the model picks `k` (1-10) for each search.
 - [`src/rag/agent/prompt.py`](../src/rag/agent/prompt.py): the agent's rules (answer only from
   tool results, cite numbers it was shown, refuse otherwise) and the text of the forced final turn.
 - [`src/rag/generate/generator.py`](../src/rag/generate/generator.py): `ToolGenerator` has one

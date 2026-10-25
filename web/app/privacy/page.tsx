@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { CONTACT, LLM_MODEL, PUBLISHER, UPDATED } from "@/lib/site.ts";
 
-export const metadata: Metadata = { title: "Privacy · Glass-box RAG" };
+export const metadata: Metadata = { title: "Privacy · Measured RAG" };
 
 export default function Privacy() {
   return (

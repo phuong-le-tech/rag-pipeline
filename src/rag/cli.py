@@ -121,7 +121,7 @@ def _echo_search(event: ToolResultEvent, call: ToolCallEvent) -> None:
         return
     typer.echo(f"{head}  {event.ms / 1000:.1f} s")
     for number, hit in list(zip(event.numbers, event.hits, strict=True))[:3]:
-        typer.echo(f"   [{number}] {hit.heading or hit.title} — {hit.url}")
+        typer.echo(f"   [{number}] {hit.heading or hit.title} - {hit.url}")
 
 
 def _run_agent_with_trace(

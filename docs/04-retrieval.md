@@ -6,7 +6,7 @@
 
 ## Concept
 
-Retrieval answers one question: **which 5–10 chunks out of ~18,000 should the LLM read?** If
+Retrieval answers one question: **which 5-10 chunks out of ~18,000 should the LLM read?** If
 the right chunk is not in that set, nothing downstream can fix it. Generation can only be as
 good as retrieval.
 
@@ -44,8 +44,8 @@ Example, with `k = 60`:
 |---|---|---|---|
 | A | 1 | 3 | 1/61 + 1/63 = **0.0323** |
 | B | 2 | 1 | 1/62 + 1/61 = **0.0325** ← winner |
-| C | 3 | – | 1/63 = 0.0159 |
-| D | – | 2 | 1/62 = 0.0161 |
+| C | 3 | - | 1/63 = 0.0159 |
+| D | - | 2 | 1/62 = 0.0161 |
 
 Being found by *both* searches matters more than being #1 in one. `k` damps the top ranks: with
 `k = 0`, rank 1 would be worth twice rank 2; with `k = 60`, they're nearly equal, so agreement
@@ -141,7 +141,7 @@ Measured on 2026-10-10 (Apple M4, CPU shared with a running ingest):
 
 | Query | Hybrid #1 | Hybrid + rerank #1 | Latency (warm) |
 |---|---|---|---|
-| "how do I see which pods are using the most CPU" | Pod-level resource managers ✗ | **kubectl top pod** ✓ | – |
+| "how do I see which pods are using the most CPU" | Pod-level resource managers ✗ | **kubectl top pod** ✓ | - |
 | "how do I roll back a deployment" | Rolling Back a Deployment ✓ | Rolling Back a Deployment ✓ | 35 ms → 3,700 ms |
 
 The reranker fixed the query hybrid got wrong and kept the one it got right, at ~100× the

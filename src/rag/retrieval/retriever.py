@@ -18,7 +18,7 @@ from rag.retrieval.rewrite import QueryRewriter
 from rag.retrieval.search import Hit, dense_search, keyword_search
 
 Mode = Literal["dense", "keyword", "hybrid"]
-# Called after each stage with its name, its hits and elapsed milliseconds (the glass-box UI).
+# Called after each stage with its name, its hits and elapsed milliseconds (streamed to the UI).
 StageHook = Callable[[str, list[Hit], float], None]
 
 

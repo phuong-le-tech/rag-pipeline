@@ -70,7 +70,7 @@ if the right chunks were found; answer metrics tell you if the LLM used them fai
 | Retrieve, fuse, rerank | [`retrieval/`](../src/rag/retrieval/) | 2 ✅ |
 | Generate with citations | [`generate/`](../src/rag/generate/) | 3 ✅ |
 | Evaluate | [`evals/`](../src/rag/evals/) | 4 ✅ |
-| Serve (web UI) | – | 5 ⏳ |
+| Serve (web UI) | - | 5 ⏳ |
 
 The corpus is the English Kubernetes documentation, about 1,500 Markdown pages. It is
 realistic: messy markup, many near-duplicate topics, and users ask real operational questions.

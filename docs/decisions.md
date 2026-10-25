@@ -88,7 +88,7 @@ On an existing DB the new column has no planner statistics until autovacuum or
 ## 2026-10-11: No reranker-score refusal threshold; Sonnet judge with repair fallback
 - **Context**: answer evals (Nemotron answers, Sonnet judge). The model refused 14/15
   unanswerable questions on its own; false-premise questions get *high* reranker scores.
-- **Decision**: no score threshold (it would wrongly refuse 2–7 answerable questions to catch
+- **Decision**: no score threshold (it would wrongly refuse 2-7 answerable questions to catch
   few extra). Judge verdicts: strict JSON, re-ask up to 3 times, then `json-repair` fallback,
   then shape validation; judge failures always reported.
 - **Consequence**: 0 judge failures in the final run (13 on the first). Structured output via
@@ -178,7 +178,7 @@ On an existing DB the new column has no planner statistics until autovacuum or
   matched and incremental ingest would have skipped every document.
 - **Decision**: `LOADER_VERSION` constant, part of the fingerprint; bump on any cleaning change.
 - **Consequence**: cleaning fixes trigger a full re-embed (~1 h on CPU). Forgetting the bump
-  silently keeps stale vectors, so it's called out in `CLAUDE.md`.
+  silently keeps stale vectors.
 
 ## 2026-10-10: Keyword search uses OR semantics; RRF k=60 for hybrid
 - **Context**: `websearch_to_tsquery` ANDs all words and excludes most chunks for natural
@@ -195,7 +195,7 @@ On an existing DB the new column has no planner statistics until autovacuum or
 - **Consequence**: asking for 50 candidates returns 50, with or without the generated filter.
 
 ## 2026-10-10: Incremental ingestion keyed on content hash + pipeline fingerprint
-- **Context**: re-embedding the whole corpus takes 35–60 min on CPU; upstream changes few pages.
+- **Context**: re-embedding the whole corpus takes 35-60 min on CPU; upstream changes few pages.
 - **Decision**: skip a document when `(content_hash, backend:model:dim:max_chars)` matches the
   stored pair; otherwise re-chunk, re-embed and swap its chunks in one transaction. Prune
   documents missing from disk. Embed `heading path + content` (contextual chunk headers).

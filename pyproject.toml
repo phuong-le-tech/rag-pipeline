@@ -1,8 +1,11 @@
 [project]
 name = "rag-pipeline"
 version = "0.1.0"
-description = "Production-style RAG pipeline: hybrid search, reranking, cited answers, measured with evals."
+description = "Measured RAG: hybrid search, reranking, cited answers and an agent mode over the Kubernetes docs, every default backed by evals."
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Phuong Le" }]
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "psycopg[binary]>=3.2",
@@ -18,6 +21,9 @@ dependencies = [
     "fastapi>=0.143.0",
     "uvicorn[standard]>=0.54.0",
 ]
+
+[project.urls]
+Repository = "https://github.com/phuong-le-tech/rag-pipeline"
 
 [project.scripts]
 rag = "rag.cli:app"

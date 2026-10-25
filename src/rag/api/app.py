@@ -1,4 +1,4 @@
-"""HTTP API for the glass-box UI: each retrieval stage and the answer stream as SSE events."""
+"""HTTP API for the web UI: each retrieval stage and the answer stream as SSE events."""
 
 import json
 import logging
@@ -251,7 +251,7 @@ def create_app(settings: Settings, services: Services | None = None) -> FastAPI:
         yield
 
     app = FastAPI(
-        title="glass-box RAG", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None
+        title="Measured RAG", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None
     )
     app.add_middleware(
         CORSMiddleware,

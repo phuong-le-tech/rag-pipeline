@@ -47,7 +47,7 @@ Pick one with `RAG_EMBEDDING_BACKEND` (`make_embedder` in `embed/factory.py`):
 
 | Backend | Implementation | Notes |
 |---|---|---|
-| `local` (default) | `LocalEmbedder`: `BAAI/bge-small-en-v1.5` via fastembed | runs on your machine (ONNX, no torch, no key), 384 dims, 67 MB weights downloaded once, ~35–60 min for the first full ingest on a laptop CPU (see the lesson below) |
+| `local` (default) | `LocalEmbedder`: `BAAI/bge-small-en-v1.5` via fastembed | runs on your machine (ONNX, no torch, no key), 384 dims, 67 MB weights downloaded once, ~35-60 min for the first full ingest on a laptop CPU (see the lesson below) |
 | `openai` | `OpenAIEmbedder`: `text-embedding-3-small` | needs `OPENAI_API_KEY`; batches of 128 per call, results re-sorted by `index`, ~$0.07 for the corpus. Set `RAG_EMBEDDING_DIM=1536` |
 | `fake` | `FakeEmbedder` | tests only: unit vectors seeded by a hash of the text, no network, no cost |
 
