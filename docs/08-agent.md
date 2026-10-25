@@ -1,7 +1,7 @@
 # 8. Agent mode: the model decides what to search
 
 > Status: 🚧 Loop, `search_docs` tool, `rag ask --agent` and the pipeline-vs-agent evaluation are
-> done. Multi-part questions: pending owner review. Results below.
+> done. Multi-part questions are not evaluated yet. Results below.
 
 ## Concept
 
@@ -161,7 +161,7 @@ Latency includes rate-limit backoff from free-tier 429 retries, which hits the a
   (`src/rag/agent/prompt.py`), then re-run the same 94 questions before changing anything else.
 - Four unanswerable questions used all four steps: check whether a lower step cap keeps the
   refusals and saves tokens.
-- Multi-part question set (pending owner review): this is where the agent should earn its cost.
+- Multi-part question set (not written yet): this is where the agent should earn its cost.
 - Re-judge both runs with a second judge family, since judged numbers depend on the judge.
 
 ## Try it
