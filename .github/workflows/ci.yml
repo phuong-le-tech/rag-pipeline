@@ -39,7 +39,7 @@ jobs:
           uv run ruff format --check .
           uv run ruff check .
       - name: Unit tests
-        run: uv run pytest -m "not integration" --cov=rag --cov-report=term
+        run: uv run pytest -m "not integration" --cov=rag --cov-report=term --cov-fail-under=80
       - name: Integration tests (Postgres + pgvector)
         run: uv run pytest -m integration
 
@@ -60,3 +60,11 @@ jobs:
       - run: npx tsc --noEmit
       - run: npm test
       - run: npm run build
+
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the API image (models baked in)
+        run: docker build -t measured-rag-api .

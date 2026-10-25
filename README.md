@@ -130,7 +130,7 @@ latency, and half the citation coverage (0.222 against 0.458). The correctness g
 points on 84 to 90 graded answers, not tested for significance), so the pipeline stays the
 default and agent mode stays opt-in.
 
-Multi-part questions: pending owner review; no numbers yet. Details and the step-limit runs in
+Multi-part questions are not evaluated yet, so the agent's expected edge there is untested. Details and the step-limit runs in
 [docs/08-agent.md](docs/08-agent.md).
 
 ## Getting started
