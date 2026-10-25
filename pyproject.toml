@@ -10,15 +10,15 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
     "psycopg[binary]>=3.3.6",
     "pgvector>=0.3",
-    "pydantic-settings>=2.4",
+    "pydantic-settings>=2.16.1",
     "typer>=0.12",
     "pyyaml>=6.0.3",
-    "openai>=3.28.0",
+    "openai>=3.36.1",
     "fastembed>=0.9.0",
     "numpy>=2.5.4",
-    "anthropic>=1.13.0",
-    "json-repair>=0.64.0",
-    "fastapi>=0.143.0",
+    "anthropic>=2.1.0",
+    "json-repair>=0.64.1",
+    "fastapi>=0.159.1",
     "uvicorn[standard]>=0.54.0",
 ]
 
