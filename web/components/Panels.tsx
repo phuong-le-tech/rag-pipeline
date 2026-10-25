@@ -47,8 +47,8 @@ function IngCard({ S, A, i, k, name }: P & { i: number; k: IngKey; name: string 
   const st = o.st, isChunk = k === "chunk";
   const keyTxt = st === "error" ? <div className="key bad">{o.key || "Failed"}</div>
     : st === "done" || (st === "running" && o.key) ? <div className="key">{o.key}</div>
-    : <div className="key dim">{st === "running" ? "Working…" : "—"}</div>;
-  const ms = st === "done" ? fmtMs(o.ms || 0) : st === "running" ? fmtMs(performance.now() - (o.t0 || 0)) : "—";
+    : <div className="key dim">{st === "running" ? "Working…" : "-"}</div>;
+  const ms = st === "done" ? fmtMs(o.ms || 0) : st === "running" ? fmtMs(performance.now() - (o.t0 || 0)) : "-";
   const total = S.col?.total || 0;
   const inner = (
     <>
@@ -146,7 +146,7 @@ function QueryFlow({ S, h }: P) {
                   <Row key={f.c.id} c={f.c} i={i}>
                     <div className="od-row">
                       <span className="rk mono">{i + 1}</span><span className="lb od-fill od-truncate">{label(f.c)}</span>
-                      <span className="fd mono od-fixed">D{f.d || "–"} · K{f.k || "–"}</span>
+                      <span className="fd mono od-fixed">D{f.d || "-"} · K{f.k || "-"}</span>
                       {!S.set.rerank && f.tag === "ctx" && <span className="tag ctx od-fixed">context</span>}
                       <span className="sc mono od-fixed">{f.rrf.toFixed(4)}</span>
                     </div>
@@ -199,7 +199,7 @@ function QueryFlow({ S, h }: P) {
                 const ci = cites.find((x) => x.id === c.id);
                 return (
                   <Row key={c.id} c={c} i={i}>
-                    <div className="od-row"><span className="cite od-fixed">{ci ? ci.n : "–"}</span><span className="lb od-fill od-truncate">{label(c)}</span><span className={cx("tag od-fixed", ci && "on")}>{ci ? "cited" : "not cited"}</span></div>
+                    <div className="od-row"><span className="cite od-fixed">{ci ? ci.n : "-"}</span><span className="lb od-fill od-truncate">{label(c)}</span><span className={cx("tag od-fixed", ci && "on")}>{ci ? "cited" : "not cited"}</span></div>
                   </Row>
                 );
               })}
@@ -359,17 +359,17 @@ export function AskPanel({ S, A, h, chatRef, inputRef }: P & { chatRef: React.Re
 /* ---------- run stats ---------- */
 export function RunStats({ S }: { S: Store }) {
   const s = S.stats;
-  const t = (x: number) => (x ? (x >= 1000 ? (x / 1000).toFixed(2) + " s" : Math.round(x) + " ms") : "—");
+  const t = (x: number) => (x ? (x >= 1000 ? (x / 1000).toFixed(2) + " s" : Math.round(x) + " ms") : "-");
   const F = ({ l, v, c }: { l: string; v: string; c?: string }) => <div className={cx("fs od-row", c)}><span className="fl">{l}</span><span className="fv mono">{v}</span></div>;
   return (
     <footer className="runstats" aria-label="Run stats">
-      <F l="Total latency" v={s ? t(s.total) : "—"} />
-      <F l="Retrieve" v={s ? t(s.retrieve) : "—"} />
-      <F l="Rerank" v={s ? t(s.rerank) : "—"} />
-      <F l="Generate" v={s ? t(s.gen) : "—"} />
-      <F l="Tokens out" v={s ? String(s.tout) : "—"} />
-      <F l="Model" v={S.info?.llm_model || "—"} />
-      <F l="Embedding" v={S.info ? `${S.info.embedding_model} · 384-dim` : "—"} c="right" />
+      <F l="Total latency" v={s ? t(s.total) : "-"} />
+      <F l="Retrieve" v={s ? t(s.retrieve) : "-"} />
+      <F l="Rerank" v={s ? t(s.rerank) : "-"} />
+      <F l="Generate" v={s ? t(s.gen) : "-"} />
+      <F l="Tokens out" v={s ? String(s.tout) : "-"} />
+      <F l="Model" v={S.info?.llm_model || "-"} />
+      <F l="Embedding" v={S.info ? `${S.info.embedding_model} · 384-dim` : "-"} c="right" />
       <div className="fs od-row credits">
         <span>Docs © <a href="https://github.com/kubernetes/website">The Kubernetes Authors</a> · <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a></span>
         <a href="/legal">Legal</a>

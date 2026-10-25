@@ -261,7 +261,7 @@ Silently dropped verdicts bias the average.
 | hybrid+rerank, no generated | 0.520 | 0.760 | 0.547 | 0.603 | 0.530 | 1309 |
 
 **Read this with the sample size in mind: with 25 questions, one question moves a score by
-0.04.** Differences of 0.04–0.08 are within noise. Only large gaps support conclusions:
+0.04.** Differences of 0.04-0.08 are within noise. Only large gaps support conclusions:
 
 - **Dense ≫ keyword** (MRR 0.58 vs 0.38). Keyword search with OR semantics is weak on natural
   questions; dense search understands paraphrases.

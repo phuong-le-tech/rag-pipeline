@@ -31,7 +31,7 @@ Garbage in, garbage retrieved. Ingestion has three jobs:
 
 **Chunk size** is a real trade-off: small chunks match precisely but lose context ("it" no
 longer says what "it" is); big chunks keep context but dilute the embedding and waste prompt
-tokens. Typical range: 200–1,000 tokens. We start at 1,500 characters (~350 tokens). Chunk size
+tokens. Typical range: 200-1,000 tokens. We start at 1,500 characters (~350 tokens). Chunk size
 hasn't been tuned yet: the eval harness (chapter 6) makes it a measurable experiment, not a guess.
 
 **Overlap** (repeating the end of one chunk at the start of the next) helps fixed-size

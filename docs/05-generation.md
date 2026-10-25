@@ -90,7 +90,7 @@ Each LLM wrapper is a few dozen lines: one request shape, `generate()` for a ful
 |---|---|---|---|---|
 | `anthropic` | `ClaudeGenerator` | `RAG_LLM_MODEL` (`claude-sonnet-5-5`) | `ANTHROPIC_API_KEY` | ~1.2¢ per answer on Sonnet |
 | `openrouter` (default since 2026-10-11) | `OpenAICompatibleGenerator` | `RAG_OPENROUTER_MODEL` (`nvidia/nemotron-3-super-120b-a12b:free`) | `OPENROUTER_API_KEY` | free tier: rate-limited, prompts may be logged |
-| `fake` | `FakeGenerator` | – | – | tests only |
+| `fake` | `FakeGenerator` | - | - | tests only |
 
 `OpenAICompatibleGenerator` speaks the OpenAI Chat Completions format, which most providers
 copy (OpenRouter, Groq, Gemini, Ollama, vLLM), so switching provider means changing a base URL
@@ -114,7 +114,7 @@ environment, so relying on the SDK's own env lookup would silently ignore `.env`
 | How do I see which pods use the most CPU? | Shows `kubectl top pod <name>` for one Pod, says the docs given don't cover sorting, suggests running it per Pod | ✗ missed `kubectl top pod --sort-by=cpu` |
 | How do I bake a sourdough bread? | "I don't know based on the provided documentation." | ✓ refused, no sources |
 
-End-to-end time: 4–7 s per question, including Python start-up and loading the embedding and
+End-to-end time: 4-7 s per question, including Python start-up and loading the embedding and
 reranker models.
 
 ### Failure analysis #1: "which pods use the most CPU"

@@ -1,4 +1,4 @@
-/* OD-LAYOUT-PRIMITIVES v1 — structure only: display, flex/grid, overflow, wrapping, ratio.
+/* OD-LAYOUT-PRIMITIVES v1 - structure only: display, flex/grid, overflow, wrapping, ratio.
    Put this @layer first; product CSS outside the layer always wins. */
 @layer od-layout {
   :where(.od-stack,.od-row,.od-row-top,.od-cluster,.od-grid,.od-field,.od-stat,.od-cell,.od-tile) > :where(*) { min-width: 0; }
@@ -12,7 +12,7 @@
   .od-fixed   { flex: none; }
   .od-grid    { display: grid; gap: var(--od-gap, 12px); grid-template-columns: repeat(var(--od-cols, 3), minmax(0, 1fr)); }
 
-  /* stacked information: each piece is its own line — never sibling inline spans */
+  /* stacked information: each piece is its own line - never sibling inline spans */
   .od-stat, .od-field, .od-cell { display: grid; gap: var(--od-gap, 2px); }
   :where(.od-stat,.od-field,.od-cell) > :where(*) { display: block; }
   .od-tile { display: grid; grid-template-rows: auto 1fr; }
@@ -22,11 +22,11 @@
      cover by accident. height:auto lets the ratio win over an <img height="…">
      attribute. Cropping to a uniform box is an explicit opt-in: set --od-ratio
      AND add .od-media-cover together (per the core rule, only where a crop is
-     deliberate — tile thumbs, decorative fills — never on full-frame content). */
+     deliberate - tile thumbs, decorative fills - never on full-frame content). */
   .od-media { display: block; width: 100%; height: auto; aspect-ratio: var(--od-ratio, auto); }
   .od-media-cover { object-fit: cover; }
 
-  /* data text only — authored copy is rewritten to its budget instead */
+  /* data text only - authored copy is rewritten to its budget instead */
   .od-truncate { display: block; max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .od-clamp-2, .od-clamp-3 { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
   .od-clamp-2 { -webkit-line-clamp: 2; }
@@ -35,7 +35,7 @@
   .od-nowrap  { white-space: nowrap; }           /* 数字+单位 · 价格+起 · 日期+星期 */
   .od-keep    { word-break: keep-all; overflow-wrap: anywhere; } /* CJK labels break at spaces / <wbr> first */
 
-  /* screen skeleton (optional): bars take their own space, the middle scrolls — no padding guessed for chrome */
+  /* screen skeleton (optional): bars take their own space, the middle scrolls - no padding guessed for chrome */
   .od-screen { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; height: 100%; }
   .od-scroll { overflow-y: auto; overscroll-behavior: contain; min-height: 0; }
 

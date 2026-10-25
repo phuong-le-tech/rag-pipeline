@@ -114,7 +114,7 @@ export default function GlassBox() {
           setQ("fusion", "done", data.ms);
           if (S.set.rerank) setQ("rerank", "running");
         } else if (data.name === "rerank") {
-          // Cross-encoder scores are logits; the sigmoid maps them to 0–1 bars.
+          // Cross-encoder scores are logits; the sigmoid maps them to 0-1 bars.
           R.rerank = list.map((x, i) => ({ c: x.c, s: 1 / (1 + Math.exp(-x.s)), from: R.fusion.find((f) => f.c.id === x.c.id)?.rank ?? i + 1, to: i + 1, tag: "" }));
           setQ("rerank", "done", data.ms);
         }
