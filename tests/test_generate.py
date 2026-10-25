@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from rag.config import Settings
+from rag.config import MissingModelError, Settings
 from rag.generate.answer import REFUSAL, Answer, answer_question, stream_answer
 from rag.generate.citations import check_citations, parse_citations
 from rag.generate.generator import (
@@ -15,6 +15,7 @@ from rag.generate.generator import (
     _anthropic_messages,
     _openai_messages,
     make_generator,
+    make_tool_generator,
 )
 from rag.generate.prompt import build_prompt, format_numbered
 from rag.retrieval.retriever import RetrieverConfig
@@ -260,7 +261,7 @@ def test_openai_compatible_generator_handles_null_content():
 
 
 def test_make_generator_sets_request_timeout_on_both_backends():
-    settings = Settings(llm_timeout_s=45)
+    settings = Settings(llm_timeout_s=45, openrouter_model="x/y:free")
 
     assert make_generator(settings.model_copy(update={"llm_backend": "openrouter"})).timeout == 45
     assert make_generator(settings.model_copy(update={"llm_backend": "anthropic"})).timeout == 45
@@ -276,11 +277,28 @@ def test_make_generator_openrouter_uses_its_base_url_and_model():
     assert gen.base_url == "https://openrouter.ai/api/v1"
 
 
-def test_default_backend_is_free_openrouter_model(monkeypatch):
+def test_default_backend_is_openrouter_and_needs_a_configured_model(monkeypatch):
     monkeypatch.delenv("RAG_LLM_BACKEND", raising=False)
+    monkeypatch.delenv("RAG_OPENROUTER_MODEL", raising=False)
     settings = Settings(_env_file=None)
     assert settings.llm_backend == "openrouter"
-    assert settings.openrouter_model.endswith(":free")
+    assert settings.openrouter_model is None
+    with pytest.raises(MissingModelError, match="RAG_OPENROUTER_MODEL"):
+        make_generator(settings)
+    with pytest.raises(MissingModelError, match="RAG_OPENROUTER_MODEL"):
+        make_tool_generator(settings)
+
+
+def test_agent_model_alone_is_enough_for_the_tool_generator(monkeypatch):
+    monkeypatch.delenv("RAG_OPENROUTER_MODEL", raising=False)
+    settings = Settings(_env_file=None, llm_backend="openrouter", agent_model="a/b:free")
+    assert make_tool_generator(settings).model == "a/b:free"
+
+
+def test_model_comes_from_the_environment(monkeypatch):
+    monkeypatch.setenv("RAG_OPENROUTER_MODEL", "from/env:free")
+    settings = Settings(_env_file=None, llm_backend="openrouter")
+    assert make_generator(settings).model == "from/env:free"
 
 
 STREAM_HIT = Hit(1, 0.9, "a.md", "https://x/a", "A", "A > B", "Use rollout undo.", False)
@@ -577,8 +595,6 @@ def test_openai_messages_empty_assistant_text_becomes_null_content():
 
 
 def test_make_tool_generator_falls_back_to_llm_backend_and_model():
-    from rag.generate.generator import make_tool_generator
-
     settings = Settings(llm_backend="openrouter", openrouter_model="m-or", _env_file=None)
 
     gen = make_tool_generator(settings)

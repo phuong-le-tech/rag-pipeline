@@ -505,6 +505,7 @@ def test_ingest_exits_when_no_documents(tmp_path):
 @pytest.fixture
 def answers_run(tmp_path, monkeypatch):
     """eval-answers with no database, network or real judging; records what it was given."""
+    monkeypatch.setenv("RAG_OPENROUTER_MODEL", "x/y:free")  # the openrouter backend has no default
     golden = tmp_path / "golden.jsonl"
     golden.write_text(
         '{"id": "q1", "question": "revert a deployment", "relevant_sources": '

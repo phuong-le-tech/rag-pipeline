@@ -8,6 +8,10 @@ from rag.ingest.loaders import LOADER_VERSION
 EmbeddingBackend = Literal["local", "openai", "fake"]
 
 
+class MissingModelError(ValueError):
+    """The selected LLM backend needs a model name that nobody configured."""
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="RAG_", env_file=".env", extra="ignore", populate_by_name=True
@@ -30,8 +34,9 @@ class Settings(BaseSettings):
     llm_max_tokens: int = Field(default=1024, gt=0)
     # Per-request timeout. SDK defaults are ~10 min, so one stuck connection stalls a batch job.
     llm_timeout_s: float = Field(default=60.0, gt=0)
-    # Free models share upstream capacity; gemma-4 was rate-limited on 2026-10-10, nemotron wasn't.
-    openrouter_model: str = "nvidia/nemotron-3-super-120b-a12b:free"
+    # No default on purpose: free models get withdrawn or rate-limited within weeks, and a stale
+    # default fails only when a user asks a question. Set RAG_OPENROUTER_MODEL in .env.
+    openrouter_model: str | None = None
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     # Keys come from env or .env without the RAG_ prefix. SecretStr hides them in reprs.
     anthropic_api_key: SecretStr | None = Field(default=None, alias="ANTHROPIC_API_KEY")
@@ -50,6 +55,15 @@ class Settings(BaseSettings):
     agent_max_steps: int = Field(default=4, gt=0, le=10)  # search_docs calls per question
     agent_timeout_s: float = Field(default=90.0, gt=0)
     agent_max_total_tokens: int = Field(default=30000, gt=0)
+
+    def require_openrouter_model(self) -> str:
+        if not self.openrouter_model:
+            raise MissingModelError(
+                "RAG_OPENROUTER_MODEL is not set. Pick a model from "
+                "https://openrouter.ai/models?q=free and add it to .env "
+                "(there is no default: free models change often)."
+            )
+        return self.openrouter_model
 
     def embedding_model_name(self) -> str:
         return {

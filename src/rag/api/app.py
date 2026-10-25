@@ -265,7 +265,9 @@ def create_app(settings: Settings, services: Services | None = None) -> FastAPI:
     app.state.budget = DailyBudget(settings.daily_llm_limit)
     app.state.slots = threading.Semaphore(settings.max_concurrent_asks)
     llm_model = (
-        settings.openrouter_model if settings.llm_backend == "openrouter" else settings.llm_model
+        settings.openrouter_model or ""
+        if settings.llm_backend == "openrouter"
+        else settings.llm_model
     )
 
     @app.get("/health")

@@ -351,7 +351,7 @@ def make_generator(settings: Settings) -> Generator:
             return FakeGenerator()
         case "openrouter":
             return OpenAICompatibleGenerator(
-                model=settings.openrouter_model,
+                model=settings.require_openrouter_model(),
                 max_tokens=settings.llm_max_tokens,
                 base_url=settings.openrouter_base_url,
                 api_key=_secret(settings.openrouter_api_key),
@@ -377,7 +377,7 @@ def make_tool_generator(settings: Settings) -> ToolGenerator:
             )
         case "openrouter":
             return OpenAICompatibleGenerator(
-                model=settings.agent_model or settings.openrouter_model,
+                model=settings.agent_model or settings.require_openrouter_model(),
                 max_tokens=settings.llm_max_tokens,
                 base_url=settings.openrouter_base_url,
                 api_key=_secret(settings.openrouter_api_key),

@@ -120,10 +120,10 @@ def test_slot_released_after_each_ask():
 
 
 def test_health_and_collection():
-    c = make_client()
+    c = make_client(openrouter_model="x/y:free")
     assert c.get("/health").json() == {"status": "ok"}
     body = c.get("/api/collection").json()
-    assert body["chunks"] == 1 and body["llm_model"].endswith(":free")
+    assert body["chunks"] == 1 and body["llm_model"] == "x/y:free"
 
 
 def test_cors_allows_only_configured_origin():
