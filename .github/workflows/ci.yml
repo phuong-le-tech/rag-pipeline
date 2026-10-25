@@ -28,7 +28,7 @@ jobs:
       RAG_TEST_ADMIN_URL: postgresql://rag:rag@localhost:5433/rag
       RAG_TEST_DATABASE_URL: postgresql://rag:rag@localhost:5433/rag_test
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
@@ -50,7 +50,7 @@ jobs:
       run:
         working-directory: web
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -65,6 +65,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build the API image (models baked in)
         run: docker build -t measured-rag-api .
