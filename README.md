@@ -143,7 +143,7 @@ run locally without any key).
 git clone https://github.com/phuong-le-tech/rag-pipeline && cd rag-pipeline
 uv sync                                   # Python 3.12 venv + dependencies
 docker compose up -d                      # Postgres 17 + pgvector on localhost:5433
-echo "OPENROUTER_API_KEY=sk-or-..." > .env    # gitignored; never commit it
+cp .env.example .env                      # gitignored; set OPENROUTER_API_KEY and RAG_OPENROUTER_MODEL
 uv run rag init-db                        # tables and indexes
 scripts/fetch_corpus.sh                   # Kubernetes docs -> data/k8s-docs (commit SHA recorded)
 RAG_EMBEDDING_THREADS=6 uv run rag ingest data/k8s-docs   # first run ~35-60 min on CPU, re-runs take seconds
@@ -219,7 +219,7 @@ Environment variables (or `.env` locally). Settings use the `RAG_` prefix; API k
 | `RAG_DATABASE_URL` | `postgresql://rag:rag@localhost:5433/rag` | |
 | `OPENROUTER_API_KEY` | - | needed for answers with the default backend |
 | `RAG_LLM_BACKEND` | `openrouter` | `anthropic` (needs `ANTHROPIC_API_KEY`), `fake` (tests) |
-| `RAG_OPENROUTER_MODEL` | `nvidia/nemotron-3-super-120b-a12b:free` | |
+| `RAG_OPENROUTER_MODEL` | - | **required** with the default backend; the API refuses to start without it. Pick one from [openrouter.ai/models?q=free](https://openrouter.ai/models?q=free): free models are withdrawn or rate-limited often, so there is no default |
 | `RAG_LLM_MODEL` | `claude-sonnet-5-5` | Anthropic backend only |
 | `RAG_LLM_TIMEOUT_S` | `60` | per LLM request |
 | `RAG_AGENT_BACKEND` | unset (= `RAG_LLM_BACKEND`) | `--agent` only: `anthropic`, `openrouter`, `fake` |
@@ -260,7 +260,7 @@ dashboard, never in the repo.
    The index is copied with `pg_dump` (~15 s) instead of re-embedded (35-60 min).
 3. **API**: add a Railway service from this repo (it uses [`railway.json`](railway.json) and the
    [`Dockerfile`](Dockerfile)). Set `RAG_DATABASE_URL=${{Postgres.DATABASE_URL}}`,
-   `OPENROUTER_API_KEY`, `RAG_CORS_ORIGINS=https://<your-vercel-domain>` and
+   `OPENROUTER_API_KEY`, `RAG_OPENROUTER_MODEL`, `RAG_CORS_ORIGINS=https://<your-vercel-domain>` and
    `RAG_EMBEDDING_THREADS=4`. Give it ≥ 2 vCPU and 2 GB RAM (rerank takes ~1.5 s at 4 threads,
    ~4 s at 2) and keep **one replica** (the guards live in memory). Generate a public domain.
    Railway waits for `/ready` before routing traffic.

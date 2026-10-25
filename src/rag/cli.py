@@ -423,7 +423,7 @@ def _llm_label(settings: Settings, model: str | None = None) -> str:
         case "anthropic":
             return f"anthropic:{model or settings.llm_model}"
         case "openrouter":
-            return f"openrouter:{model or settings.openrouter_model}"
+            return f"openrouter:{model or settings.openrouter_model or 'unset'}"
     return settings.llm_backend
 
 
