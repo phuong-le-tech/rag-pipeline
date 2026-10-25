@@ -16,3 +16,9 @@ build/
 data/*
 !data/.gitkeep
 evals/results/
+
+# Local agent and dev tooling
+CLAUDE.md
+.claude/
+.superpowers/
+graphify-out/
