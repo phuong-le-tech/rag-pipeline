@@ -395,3 +395,14 @@ def test_failing_generator_build_does_not_spend_the_daily_budget():
     body = {"question": "a", "impl": "langchain"}
     assert events(c.post("/api/ask", json=body))[-1][1]["code"] == "failed"
     assert events(c.post("/api/ask", json=body))[-1][0] == "done"  # the slot was not spent
+
+
+@pytest.mark.parametrize("impl", ["handwritten", "langchain"])
+def test_ask_log_line_names_the_implementation(impl, caplog):
+    import logging
+
+    caplog.set_level(logging.INFO, logger="rag.api")
+    client = lc_client()
+    events(client.post("/api/ask", json={"question": "roll back?", "impl": impl}))
+    logged = [json.loads(r.message) for r in caplog.records if r.name == "rag.api"]
+    assert logged[-1]["impl"] == impl and logged[-1]["status"] == "ok"
