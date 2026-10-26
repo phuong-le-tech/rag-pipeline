@@ -193,7 +193,9 @@ protected by the [guards](#security-and-privacy) below.
 | `POST /api/collections` | Upload a `.md`/`.txt` file (multipart `file`) or JSON `{"text"}`; streams `stage` events (`load`, `clean`, `chunk`, `embed`, `store`) then `done {collection, docs, chunks}`. Max 1 MB, UTF-8, 300 chunks. Stored up to 24 h, never logged |
 | `POST /api/ask` | Answer a question as a server-sent event stream; optional `collection` (32 hex) asks over an upload |
 
-`POST /api/ask` body: `{"question": "...", "k": 5, "rerank": true, "max_one_per_page": true}`
+`POST /api/ask` body: `{"question": "...", "k": 5, "rerank": true, "max_one_per_page": true, "impl": "handwritten"}`.
+`impl` is `handwritten` (default) or `langchain` (422 `impl_unavailable` when the extra is not installed);
+`GET /api/collection` lists the available `impls`, and the `done` event says which one answered.
 (`question` 1-500 characters, `k` 3-10). The response is `text/event-stream`:
 
 | Event | Payload |
