@@ -44,7 +44,7 @@ rag eval-answers --mode pipeline --impl langchain
 rag compare evals/results/<handwritten>-answers.json evals/results/<langchain>-answers.json
 ```
 
-Repeat with `--mode agent`. `rag compare` refuses two runs of the same implementation or of
+Repeat with `--mode agent`. For a cheaper run, pass `--limit N` and a shortened `--unanswerable` file. `rag compare` refuses two runs of the same implementation or of
 different modes. The judge model is shared, so it grades both the same way.
 
 "Lines of code" counts non-blank lines in `lc/*.py` against `generate/answer.py`,
@@ -80,8 +80,39 @@ free-tier noise. The one clear difference is code size: the LangChain orchestrat
 the lines, but it reuses the hand-written prompt, tools and citation checks, so it is not a
 like-for-like count.
 
-Not measured: agent mode. An earlier agent attempt was discarded because the model used in the
-old hand-written run had been withdrawn, so the two sides would not have matched.
+### Agent mode
+
+Same model, judge and settings, one run each on a smaller sample: the first 25 answerable and 4
+unanswerable questions (29 in total), so the questions are a subset of the pipeline sample.
+
+| Metric | Hand-written | LangChain |
+|---|---:|---:|
+| Answer rate (answerable) | 1.000 | 1.000 |
+| False refusals | 0.000 | 0.000 |
+| Faithfulness (supported claims) | 0.864 | 0.925 |
+| Correct: yes | 0.913 | 1.000 |
+| Correct: partial | 0.087 | 0.000 |
+| Citation coverage (sentences cited) | 0.390 | 0.406 |
+| Answers with invented citations | 0.000 | 0.000 |
+| Refusal on unanswerable | 1.000 | 1.000 |
+| LLM calls per question | 2.34 | 2.31 |
+| Searches per question | 1.34 | 1.31 |
+| Tokens per question | 4534 | 4401 |
+| Latency p50 (ms) | 11585 | 15226 |
+| Latency p95 (ms) | 29364 | 55974 |
+| Lines of code | 600 | 326 |
+
+The agents behave alike: about 2.3 model calls and 1.3 searches per question, and about 4,400
+to 4,500 tokens. One answer in each run hit the step limit. The quality gap (correct 0.913
+against 1.000) is one or two answers out of 23 graded, so it is noise at this sample size, not a
+LangChain advantage. The latency gap (p95 29 s against 56 s) comes from a handful of slow calls
+on a rate-limited free model in single runs. It is not evidence that the graph itself is slower: its
+own overhead is milliseconds next to seconds of model time.
+
+Both samples are halves or less of the 109-question golden set, each configuration ran once, and
+the free model can change between days, so treat the tables as "no visible difference", not as
+proof of equivalence. The raw result files are in `evals/results/` (gitignored); re-run
+`rag eval-answers --impl ...` and `rag compare` to reproduce.
 
 ## Trade-offs
 

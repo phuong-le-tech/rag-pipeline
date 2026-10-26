@@ -10,7 +10,9 @@ keyword search, rank fusion, cross-encoder reranking, the streamed answer and th
 behind each citation.
 
 Built without a RAG framework so every stage is visible, tested and measured. Every default is
-backed by an evaluation on 94 reviewed questions.
+backed by an evaluation on 94 reviewed questions. A second, optional implementation of the
+pipeline and the agent uses LangChain and LangGraph, and the two are measured against each other
+([chapter 9](docs/09-langchain.md)).
 
 - **Hybrid retrieval**: pgvector (HNSW) + Postgres full-text, fused with Reciprocal Rank Fusion
 - **Cross-encoder reranking** and one-chunk-per-page diversity (+0.15 Hit@5 over plain hybrid)
@@ -153,7 +155,7 @@ The pipeline also runs through LangChain (`--impl langchain`, [chapter 9](docs/0
 | Latency p95 (ms) | 22979 | 28878 |
 | Lines of code | 600 | 326 |
 
-Pipeline mode only, one run each; agent mode is not compared yet.
+Agent mode, 29 questions (25 answerable, 4 unanswerable): calls, searches and tokens match (2.3 calls, 1.3 searches, about 4,400 tokens per question); quality and latency differences are within noise at that size. One run each; details in [chapter 9](docs/09-langchain.md).
 
 ## Getting started
 
@@ -342,7 +344,10 @@ src/rag/
                        answer.py
   agent/               loop.py (tool-calling loop, passage registry, limits), tools.py (search_docs),
                        prompt.py
-  evals/               metrics.py, golden.py, runner.py, drafting.py, review.py, judge.py, answers.py
+  lc/                  optional LangChain/LangGraph implementation: retriever.py, chain.py (LCEL),
+                       agent.py (LangGraph), llm.py, factory.py (needs `uv sync --extra langchain`)
+  evals/               metrics.py, golden.py, runner.py, drafting.py, review.py, judge.py, answers.py,
+                       compare.py
   config.py, db.py, schema.sql, cli.py
 web/                   Next.js UI: components/, lib/api.ts (SSE client), app/privacy, app/legal
 evals/                 golden.jsonl, unanswerable.jsonl, review audit trail (results gitignored)

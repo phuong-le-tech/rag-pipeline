@@ -80,8 +80,10 @@ realistic: messy markup, many near-duplicate topics, and users ask real operatio
 - **Postgres for everything** (vectors + keywords + metadata) instead of a dedicated vector
   DB: one system to run, transactional updates, SQL joins. Cost: tuning is on us at very
   large scale (millions of chunks), which we won't reach.
-- **No framework** (LangChain, LlamaIndex): more code to write, but every step is visible,
-  testable, and explainable in an interview.
+- **No framework** (LangChain, LlamaIndex) by default: more code to write, but every step is
+  visible, testable, and explainable in an interview. A LangChain version of the pipeline and
+  agent was added later as an optional second implementation, so the trade-off is measured
+  rather than assumed (see [chapter 9](09-langchain.md)).
 
 ## Try it
 
