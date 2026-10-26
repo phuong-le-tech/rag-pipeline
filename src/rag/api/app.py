@@ -206,7 +206,7 @@ def run_ask(
         yield sse("error", {"code": status, "message": message})
     finally:
         release()
-        log.info(json.dumps({"id": rid, "status": status, "ms": timings}))
+        log.info(json.dumps({"id": rid, "impl": impl, "status": status, "ms": timings}))
 
 
 def run_upload(
