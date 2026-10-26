@@ -21,7 +21,8 @@ pipeline and the agent uses LangChain and LangGraph, and the two are measured ag
 - **Glass-box UI**: each stage streams over server-sent events with its hits, scores and timing;
   drop a Markdown file or paste text to watch it ingested (load, clean, chunk, embed, store) and
   ask questions over it (kept 24 h, then deleted)
-- **Opt-in agent mode**: a hand-written tool-calling loop where the model decides
+- **Opt-in agent mode** (CLI `--agent`, and an Agent switch in the web UI): a tool-calling loop
+  where the model decides
   what to search and how often; on the same 94 + 15 questions it cuts false refusals from 7 to 1
   for ~2.9× the tokens, so the fixed pipeline stays the default
 - **LangChain alongside**: the same pipeline and agent also run through LangChain (LCEL) and
@@ -221,9 +222,12 @@ protected by the [guards](#security-and-privacy) below.
 | `POST /api/collections` | Upload a `.md`/`.txt` file (multipart `file`) or JSON `{"text"}`; streams `stage` events (`load`, `clean`, `chunk`, `embed`, `store`) then `done {collection, docs, chunks}`. Max 1 MB, UTF-8, 300 chunks. Stored up to 24 h, never logged |
 | `POST /api/ask` | Answer a question as a server-sent event stream; optional `collection` (32 hex) asks over an upload |
 
-`POST /api/ask` body: `{"question": "...", "k": 5, "rerank": true, "max_one_per_page": true, "impl": "handwritten"}`.
+`POST /api/ask` body: `{"question": "...", "k": 5, "rerank": true, "max_one_per_page": true, "impl": "handwritten", "agent": false}`.
 `impl` is `handwritten` (default) or `langchain` (422 `impl_unavailable` when the extra is not installed);
 `GET /api/collection` lists the available `impls`, and the `done` event says which one answered.
+`agent: true` runs agent mode (422 `agent_unavailable` when `RAG_AGENT_ENABLED=false`): the stream
+adds one `step` event per search and the answer arrives at the end instead of token by token. Each
+model call is charged to the daily budget, so one agent question costs about 2.5 answers.
 (`question` 1-500 characters, `k` 3-10). The response is `text/event-stream`:
 
 | Event | Payload |
@@ -255,11 +259,12 @@ Environment variables (or `.env` locally). Settings use the `RAG_` prefix; API k
 | `RAG_OPENROUTER_MODEL` | - | **required** with the default backend; the API refuses to start without it. Pick one from [openrouter.ai/models?q=free](https://openrouter.ai/models?q=free): free models are withdrawn or rate-limited often, so there is no default |
 | `RAG_LLM_MODEL` | `claude-sonnet-5-5` | Anthropic backend only |
 | `RAG_LLM_TIMEOUT_S` | `60` | per LLM request |
-| `RAG_AGENT_BACKEND` | unset (= `RAG_LLM_BACKEND`) | `--agent` only: `anthropic`, `openrouter`, `fake` |
-| `RAG_AGENT_MODEL` | unset (= the backend's model) | `--agent` only |
-| `RAG_AGENT_MAX_STEPS` | `4` | `--agent` only: steps per question (searches, invalid calls, empty replies) (1-10) |
-| `RAG_AGENT_TIMEOUT_S` | `90` | `--agent` only: checked between model turns |
-| `RAG_AGENT_MAX_TOTAL_TOKENS` | `30000` | `--agent` only: input + output tokens per question |
+| `RAG_AGENT_ENABLED` | `true` | the web API offers agent mode; `false` hides the switch and answers `agent: true` requests with 422 |
+| `RAG_AGENT_BACKEND` | unset (= `RAG_LLM_BACKEND`) | agent mode only: `anthropic`, `openrouter`, `fake` |
+| `RAG_AGENT_MODEL` | unset (= the backend's model) | agent mode only |
+| `RAG_AGENT_MAX_STEPS` | `4` | agent mode only: steps per question (searches, invalid calls, empty replies) (1-10) |
+| `RAG_AGENT_TIMEOUT_S` | `90` | agent mode only: checked between model turns |
+| `RAG_AGENT_MAX_TOTAL_TOKENS` | `30000` | agent mode only: input + output tokens per question |
 | `RAG_EMBEDDING_BACKEND` | `local` | `openai` (needs `OPENAI_API_KEY`, dim 1536), `fake` |
 | `RAG_EMBEDDING_DIM` | `384` | must match the embedding model |
 | `RAG_EMBEDDING_THREADS` | unset | ONNX threads for embedder and reranker; 4-6 recommended |
@@ -304,6 +309,8 @@ dashboard, never in the repo.
    hidden with `RAG_LLM_BACKEND=anthropic`, which LangChain does not support yet). LangChain
    answers share the same rate limit, daily budget and concurrency cap. Do not set
    `LANGSMITH_*` or `LANGCHAIN_*` variables: they would turn on tracing to a third party.
+   Agent mode (a Settings switch) is also on by default: it takes about 2.5 model calls per
+   question, each charged to `RAG_DAILY_LLM_LIMIT`. Set `RAG_AGENT_ENABLED=false` to turn it off.
 6. **Check**: `curl https://<api-domain>/ready` returns the chunk count; ask a question on the
    site; ask 11 questions within a minute and the 11th is rate-limited; from another network
    (a phone on mobile data) you can still ask, which confirms the limiter sees real client IPs.
@@ -375,9 +382,9 @@ Dockerfile, railway.json, docker-compose.yml
 - **No authentication**: the API is public by design and protected only by the guards above.
 - **Stage events arrive together** once retrieval finishes (~1.5 s), then the answer streams.
 - **LangChain is optional and partial**: no Claude backend yet (`langchain-anthropic` needs
-  `anthropic<2`), no agent mode in the web UI (the API has no agent endpoint), and the CLI prints
-  the LangChain agent's steps after the run, not live.
-- **Agent mode is opt-in and slower**: median latency about 11 s against 5 s, and its citations
+  `anthropic<2`), and its agent shows the steps after the run, not live (in the CLI and the UI).
+- **Agent mode is opt-in and slower**: in the web UI the answer appears at the end, not token by
+  token, and a question costs about 2.5 daily-budget answers. In the evals: median latency about 11 s against 5 s, and its citations
   are sparser (22% of sentences cited against 46% for the pipeline).
 
 ## License

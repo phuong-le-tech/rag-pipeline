@@ -1,13 +1,20 @@
 // Client for the FastAPI backend (src/rag/api/app.py): JSON endpoints + SSE answer stream.
-import type { Chunk, Impl, Part } from "./types.ts";
+import type { Chunk, Impl, Part, Step } from "./types.ts";
 
 export const API_URL = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/$/, "");
 
 export type ApiHit = { id: number; heading: string; title: string; url: string; content: string; score: number };
-export type CollectionInfo = { name: string; docs: number; chunks: number; llm_model: string; embedding_model: string; impls?: Impl[] };
-export type AskBody = { question: string; k: number; rerank: boolean; max_one_per_page: boolean; impl?: Impl; collection?: string };
+export type CollectionInfo = { name: string; docs: number; chunks: number; llm_model: string; embedding_model: string; impls?: Impl[]; agent?: boolean };
+export type AskBody = { question: string; k: number; rerank: boolean; max_one_per_page: boolean; impl?: Impl; agent?: boolean; collection?: string };
 // The server lists the implementations it can run; anything else falls back to hand-written.
 export const effectiveImpl = (info: CollectionInfo | null, wanted: Impl): Impl => (info?.impls?.includes(wanted) ? wanted : "handwritten");
+// Agent mode is sent only when the server offers it.
+export const effectiveAgent = (info: CollectionInfo | null, wanted: boolean): boolean => !!info?.agent && wanted;
+export const stepLabel = (s: Step): string => {
+  if (s.error) return `Search failed: ${s.error}`;
+  if (s.duplicate) return `${s.query} · already searched`;
+  return `${s.query} · ${s.count} ${s.count === 1 ? "passage" : "passages"}`;
+};
 export type ApiSource = { n: number; id: number };
 export type SSE = { event: string; data: any };
 

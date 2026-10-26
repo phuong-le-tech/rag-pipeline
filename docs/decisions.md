@@ -264,3 +264,12 @@ On an existing DB the new column has no planner statistics until autovacuum or
   check and judge; only the orchestration differs. Optional extra `langchain`.
 - **Consequence**: `rag compare` can report both. `langchain-anthropic` is left out because it
   needs `anthropic<2`; `impl=langchain` supports `openrouter` and `fake` for now.
+
+## 2026-10-27: Agent mode in the web UI
+- **Context**: agent mode existed only in the CLI and evals. The UI had no way to show it.
+- **Decision**: `POST /api/ask` takes `agent: true` and streams the usual events plus `step`
+  events. Each model call is charged to the daily budget (`take_budget`), and the same rate limit
+  and concurrency cap apply. `RAG_AGENT_ENABLED` (default on) is the off switch. The LangGraph
+  agent got the same budget hook.
+- **Consequence**: a question can cost about 2.5 budget slots and the answer is not streamed.
+  Agent answers cite less (see chapter 8), so the pipeline stays the default.
