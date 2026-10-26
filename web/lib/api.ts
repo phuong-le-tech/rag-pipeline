@@ -66,6 +66,20 @@ export function splitCitations(text: string, sources: ApiSource[]): Part[] {
   return parts;
 }
 
+// Server-side: the model name the API is configured with (RAG_OPENROUTER_MODEL), for the privacy
+// page. The route is revalidated hourly, so a model change shows up without a redeploy. Null when
+// the API is unreachable, so the page falls back to generic wording instead of failing the build.
+export async function fetchLlmModel(doFetch: typeof fetch = fetch): Promise<string | null> {
+  try {
+    const r = await doFetch(`${API_URL}/api/collection`, { next: { revalidate: 3600 }, signal: AbortSignal.timeout(5000) } as RequestInit);
+    if (!r.ok) return null;
+    const model = (await r.json()).llm_model;
+    return typeof model === "string" && model ? model : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function getCollection(): Promise<CollectionInfo> {
   const r = await fetch(`${API_URL}/api/collection`);
   if (!r.ok) throw new ApiError(r.status, "unavailable");
