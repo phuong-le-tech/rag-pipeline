@@ -51,6 +51,7 @@ export default function GlassBox() {
     try { localStorage.setItem("gb-theme", S.theme); } catch {}
     render();
   };
+  const toggleImpl = () => { S.set.impl = S.set.impl === "langchain" ? "handwritten" : "langchain"; announce("Answering with " + (S.set.impl === "langchain" ? "LangChain" : "the hand-written pipeline")); render(); };
   const toggleRerank = () => { S.set.rerank = !S.set.rerank; announce("Rerank " + (S.set.rerank ? "on" : "off")); render(); };
 
   /* ---------- collection: the Kubernetes index, built ahead of time ---------- */
@@ -294,6 +295,7 @@ export default function GlassBox() {
   const cmds: Cmd[] = [
     { t: "Toggle rerank", s: S.set.rerank ? "on" : "off", k: "R", run: toggleRerank },
     { t: "Toggle max 1 chunk per page", s: S.set.one ? "on" : "off", run: () => { S.set.one = !S.set.one; render(); } },
+    ...(S.info?.impls?.includes("langchain") ? [{ t: "Toggle LangChain", s: S.set.impl === "langchain" ? "on" : "off", run: toggleImpl }] : []),
     { t: "Ask a question", k: "/", run: () => refs.input.current?.focus() },
     { t: "Toggle theme", k: "T", run: toggleTheme },
     { t: "Open settings", k: ",", run: () => toggleMenu("settings") },

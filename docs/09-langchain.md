@@ -27,6 +27,11 @@ Choose the implementation with `RAG_IMPL=langchain`, or `--impl langchain` on `r
 
 Install the optional extra first: `uv sync --extra langchain`.
 
+In the web UI, a **LangChain** switch in Settings (also "Toggle LangChain" in the command
+palette) picks the implementation per question. It appears only when the server offers it, and
+the answer header, including a refusal, says "LangChain" when it answered. The UI covers the
+pipeline only: the API has no agent endpoint.
+
 ### Things worth knowing
 
 - **Anthropic is not available with `impl=langchain` yet.** `langchain-anthropic` requires
