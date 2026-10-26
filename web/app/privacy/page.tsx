@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
-import { CONTACT, LLM_MODEL, PUBLISHER, UPDATED } from "@/lib/site.ts";
+import { fetchLlmModel } from "@/lib/api.ts";
+import { CONTACT, PUBLISHER, UPDATED } from "@/lib/site.ts";
 
 export const metadata: Metadata = { title: "Privacy · Measured RAG" };
 
-export default function Privacy() {
+export default async function Privacy() {
+  const model = await fetchLlmModel();
   return (
     <main className="legal">
       <p><a href="/">← Back to the demo</a></p>
@@ -20,8 +22,9 @@ export default function Privacy() {
       <h2>What is processed</h2>
       <p>
         The question you type is sent to our API to search the Kubernetes documentation, then to a
-        large language model to write the answer. The model is <code>{LLM_MODEL}</code>, reached
-        through OpenRouter. Free model providers may log prompts.{" "}
+        large language model to write the answer. {model ? <>The model is <code>{model}</code>, reached
+        through OpenRouter.</> : <>The model is a free one reached through OpenRouter.</>} Free model
+        providers may log prompts.{" "}
         <strong>Do not enter personal or confidential information.</strong>
       </p>
 

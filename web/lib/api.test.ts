@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ApiError, askStream, effectiveAgent, effectiveImpl, ingestUpdate, parseSSE, splitCitations, stepLabel, toChunk, uploadStream } from "./api.ts";
+import { ApiError, askStream, effectiveAgent, effectiveImpl, fetchLlmModel, ingestUpdate, parseSSE, splitCitations, stepLabel, toChunk, uploadStream } from "./api.ts";
 
 test("parseSSE splits complete events and keeps the partial tail", () => {
   const { events, rest } = parseSSE('event: token\ndata: {"text":"Hi"}\n\nevent: done\ndata: {"te');
@@ -87,4 +87,17 @@ test("stepLabel describes a search, a repeat and a failure", () => {
   assert.equal(stepLabel({ ...base, count: 1 }), "rollback · 1 passage");
   assert.equal(stepLabel({ ...base, duplicate: true }), "rollback · already searched");
   assert.equal(stepLabel({ ...base, query: "", error: "Error: query is required." }), "Search failed: Error: query is required.");
+});
+
+const json = (body: unknown, status = 200) => async () => new Response(JSON.stringify(body), { status });
+
+test("fetchLlmModel reads the model name the API reports", async () => {
+  assert.equal(await fetchLlmModel(json({ llm_model: "vendor/model:free" })), "vendor/model:free");
+});
+
+test("fetchLlmModel returns null when the API is down, errors or sends no model", async () => {
+  assert.equal(await fetchLlmModel(json({}, 503)), null);
+  assert.equal(await fetchLlmModel(json({ llm_model: "" })), null);
+  assert.equal(await fetchLlmModel(json({ name: "no model field" })), null);
+  assert.equal(await fetchLlmModel(async () => { throw new TypeError("fetch failed"); }), null);
 });
