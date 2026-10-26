@@ -69,6 +69,16 @@ the next request otherwise.
 The model is called once per step, plus one forced final turn. Each limit has a unit test that
 checks the loop stops, so a bad model cannot run up the bill.
 
+### In the web UI
+
+`POST /api/ask` with `"agent": true` runs the same loop ([`run_ask_agent`](../src/rag/api/app.py)).
+It sends a `stage` event for each search's retrieval stages and a `step` event per search, then
+`context` and `done`. The UI lists the searches above the answer. Three things differ from the
+pipeline: there are no `token` events (the answer arrives at the end), every model call is charged
+to the daily budget through `run_agent`'s `take_budget` hook (a question costs about 2.5 answers),
+and the LangChain agent replays its steps after the run instead of live. `RAG_AGENT_ENABLED=false`
+turns it off.
+
 ## Trade-offs
 
 - **Latency.** Each search reranks (about 1.5 s on CPU), and each model turn takes seconds on a

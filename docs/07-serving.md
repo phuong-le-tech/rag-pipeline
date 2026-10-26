@@ -45,14 +45,15 @@ stream reader (not `EventSource`, which can't send a POST body).
 ### The API ([`src/rag/api/app.py`](../src/rag/api/app.py))
 
 `POST /api/ask` with `{"question", "k", "rerank", "max_one_per_page", "impl"}` answers with a stream
-(`impl` is `handwritten` or `langchain`, see [chapter 9](09-langchain.md); the events are identical):
+(`impl` is `handwritten` or `langchain`, see [chapter 9](09-langchain.md); the events are identical). With `"agent": true` the model decides what to search ([chapter 8](08-agent.md)); the stream is the same plus `step` events, and there are no `token` events:
 
 | Event | When | Payload |
 |---|---|---|
 | `stage` | after retrieval, one per stage: `dense`, `keyword`, `fusion`, `rerank` | `name`, `ms`, top 10 `hits` (id, heading, url, content, score) |
-| `context` | once | the passages the LLM will read (after rerank and the one-per-page cap) |
+| `step` | agent mode only, after each search | `step`, `query`, `k`, `numbers` (passage numbers), `duplicate`, `error`, `ms` |
+| `context` | once | the passages the LLM will read (after rerank and the one-per-page cap); in agent mode every passage the agent saw, in citation order |
 | `token` | as the LLM writes | `text` |
-| `done` | end | full `text`, `refused`, `sources` (`[n]` → chunk id), `invalid` citations, total `ms` |
+| `done` | end | full `text`, `refused`, `sources` (`[n]` → chunk id), `invalid` citations, `impl`, total `ms`; agent mode adds `agent`, `searches`, `llm_calls`, `stopped` |
 | `error` | instead of `done` | `code` (`llm_failed`, `daily_limit`, `failed`), human `message` |
 
 Two small changes made this possible without duplicating pipeline logic:
@@ -64,7 +65,7 @@ Two small changes made this possible without duplicating pipeline logic:
 
 Other endpoints: `GET /health` (process alive), `GET /ready` (database reachable and the index is
 non-empty: Railway waits for it before routing traffic), `GET /api/collection` (counts, model
-names for the UI footer).
+names for the UI footer, and which `impls` and whether `agent` mode are offered).
 
 ### Uploads ([`src/rag/ingest/upload.py`](../src/rag/ingest/upload.py))
 
