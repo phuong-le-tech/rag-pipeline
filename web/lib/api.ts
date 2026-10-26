@@ -1,11 +1,13 @@
 // Client for the FastAPI backend (src/rag/api/app.py): JSON endpoints + SSE answer stream.
-import type { Chunk, Part } from "./types.ts";
+import type { Chunk, Impl, Part } from "./types.ts";
 
 export const API_URL = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/$/, "");
 
 export type ApiHit = { id: number; heading: string; title: string; url: string; content: string; score: number };
-export type CollectionInfo = { name: string; docs: number; chunks: number; llm_model: string; embedding_model: string };
-export type AskBody = { question: string; k: number; rerank: boolean; max_one_per_page: boolean; collection?: string };
+export type CollectionInfo = { name: string; docs: number; chunks: number; llm_model: string; embedding_model: string; impls?: Impl[] };
+export type AskBody = { question: string; k: number; rerank: boolean; max_one_per_page: boolean; impl?: Impl; collection?: string };
+// The server lists the implementations it can run; anything else falls back to hand-written.
+export const effectiveImpl = (info: CollectionInfo | null, wanted: Impl): Impl => (info?.impls?.includes(wanted) ? wanted : "handwritten");
 export type ApiSource = { n: number; id: number };
 export type SSE = { event: string; data: any };
 

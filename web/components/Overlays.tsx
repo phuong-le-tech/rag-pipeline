@@ -97,6 +97,12 @@ export function SettingsMenu({ S, anchor, onChange }: MenuProps & { onChange: ()
       </div>
       <Sw k="rerank" label="Rerank" hint="Cross-encoder reorders fused passages · R" />
       <Sw k="one" label="Max 1 chunk per page" hint="Drop repeat chunks from the same page" />
+      {S.info?.impls?.includes("langchain") && (
+        <div className="od-row setrow">
+          <div className="od-field od-fill"><span className="sl">LangChain</span><span className="sh">Answer with the LangChain pipeline instead of the hand-written one</span></div>
+          <button className="switch od-fixed" type="button" role="switch" aria-checked={set.impl === "langchain"} aria-label="LangChain" onClick={() => { set.impl = set.impl === "langchain" ? "handwritten" : "langchain"; onChange(); }}><i /></button>
+        </div>
+      )}
     </div>
   );
 }

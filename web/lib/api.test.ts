@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ApiError, askStream, ingestUpdate, parseSSE, splitCitations, toChunk, uploadStream } from "./api.ts";
+import { ApiError, askStream, effectiveImpl, ingestUpdate, parseSSE, splitCitations, toChunk, uploadStream } from "./api.ts";
 
 test("parseSSE splits complete events and keeps the partial tail", () => {
   const { events, rest } = parseSSE('event: token\ndata: {"text":"Hi"}\n\nevent: done\ndata: {"te');
@@ -62,4 +62,13 @@ test("askStream passes the collection through", async (t) => {
   });
   await askStream({ question: "q", k: 5, rerank: true, max_one_per_page: true, collection: "a".repeat(32) }, () => {});
   assert.equal(JSON.parse(sent).collection, "a".repeat(32));
+});
+
+const info = (impls?: ("handwritten" | "langchain")[]) => ({ name: "k", docs: 1, chunks: 1, llm_model: "m", embedding_model: "e", impls });
+
+test("effectiveImpl keeps the choice only when the server offers it", () => {
+  assert.equal(effectiveImpl(info(["handwritten", "langchain"]), "langchain"), "langchain");
+  assert.equal(effectiveImpl(info(["handwritten"]), "langchain"), "handwritten");
+  assert.equal(effectiveImpl(info(), "langchain"), "handwritten"); // older server without `impls`
+  assert.equal(effectiveImpl(null, "langchain"), "handwritten"); // collection not loaded yet
 });

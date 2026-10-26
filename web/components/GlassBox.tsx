@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useReducer, useRef } from "react";
-import { type ApiHit, ApiError, askStream, getCollection, ingestUpdate, type SSE, splitCitations, toChunk, uploadStream } from "@/lib/api.ts";
+import { type ApiHit, ApiError, askStream, effectiveImpl, getCollection, ingestUpdate, type SSE, splitCitations, toChunk, uploadStream } from "@/lib/api.ts";
 import type { Collection, Retrieval, Scored, StageState } from "@/lib/types.ts";
 import { Icon } from "./Icons";
 import { type Cmd, CitePopover, CollMenu, Palette, paletteItems, SettingsMenu } from "./Overlays";
@@ -220,6 +220,7 @@ export default function GlassBox() {
         m.cites = data.sources.map((s: { n: number; id: number }) => ({ n: s.n, id: String(s.id) }));
         m.status = data.refused ? "refusal" : "done";
         m.ms = data.ms;
+        m.impl = data.impl;
         q.tout = q.tok;
         const retrieve = (ms.dense || 0) + (ms.keyword || 0) + (ms.fusion || 0);
         const rerank = ms.rerank || 0;
@@ -234,7 +235,7 @@ export default function GlassBox() {
     };
 
     try {
-      await askStream({ question: text, k: S.set.k, rerank: S.set.rerank, max_one_per_page: S.set.one, collection: S.col!.id === "k8s" ? undefined : S.col!.id }, onEvent);
+      await askStream({ question: text, k: S.set.k, rerank: S.set.rerank, max_one_per_page: S.set.one, impl: effectiveImpl(S.info, S.set.impl), collection: S.col!.id === "k8s" ? undefined : S.col!.id }, onEvent);
       if (live() && m.status === "streaming") { m.status = "error"; m.message = UNAVAILABLE; }
     } catch (e) {
       if (!live()) return;

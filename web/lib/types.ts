@@ -20,7 +20,8 @@ export type Collection = {
   size?: number;
 };
 
-export type Settings = { k: number; rerank: boolean; one: boolean };
+export type Impl = "handwritten" | "langchain";
+export type Settings = { k: number; rerank: boolean; one: boolean; impl: Impl };
 
 export type Scored = { c: Chunk; s: number };
 export type Fused = { c: Chunk; d: number | null; k: number | null; rrf: number; rank: number; s: number; tag: string };
