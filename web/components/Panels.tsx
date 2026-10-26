@@ -386,13 +386,14 @@ const waitText = (retryAt?: number) => {
 function Message({ m, S, A, h }: P & { m: Msg }) {
   if (m.role === "u") return <article className="msg"><div className="who">You</div><p className="qt">{m.text}</p></article>;
   const Hd = ({ r }: { r: ReactNode }) => <div className="who"><span>Answer</span><span className="grow" />{r}</div>;
+  const took = (text: string) => <span className="mono">{m.impl === "langchain" && "LangChain · "}{text}</span>;
   const citeBtn = (id: string, n: number, key?: string | number) => (
     <button key={key} className={cx("cite", h(id))} type="button" data-chunk={id} data-n={n} aria-label={`Citation ${n}`} onClick={(e) => A.pin(e.currentTarget)}>{n}</button>
   );
   if (m.status === "refusal") {
     return (
       <article className="msg">
-        <Hd r={<span className="mono">{fmtMs(m.ms || 0)}</span>} />
+        <Hd r={took(fmtMs(m.ms || 0))} />
         <div className="refusal" role="status">
           <div className="rl"><Icon name="ban" />Refused</div>
           <p className="rt">I don&apos;t know based on the provided documentation.</p>
@@ -415,7 +416,7 @@ function Message({ m, S, A, h }: P & { m: Msg }) {
   const done = m.status === "done";
   return (
     <article className="msg">
-      <Hd r={<span className="mono">{m.impl === "langchain" && "LangChain · "}{done ? fmtMs(m.ms || 0) : "streaming"}</span>} />
+      <Hd r={took(done ? fmtMs(m.ms || 0) : "streaming")} />
       <p className="ans">
         {m.parts.map((p, i) => (p.t === "t" ? <Md key={i} text={p.v} /> : citeBtn(p.id, p.n, i)))}
         {!done && <span className="caret" />}
