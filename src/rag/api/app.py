@@ -172,11 +172,13 @@ def run_ask(
         yield from staged
         # The passages the LLM will read (after rerank and the per-page cap).
         yield sse("context", {"hits": [hit_json(h) for h in hits]})
+        generator = (
+            services.lc_generator() if impl == "langchain" else services.generator
+        )  # built before the budget is spent
         if hits and not budget.take():
             status = "daily_limit"
             yield sse("error", {"code": "daily_limit", "message": DAILY_LIMIT_MSG})
             return
-        generator = services.lc_generator() if impl == "langchain" else services.generator
         gen_start, generating = time.perf_counter(), True
         result: Answer | None = None
         for item in stream_answer(question, hits, generator):

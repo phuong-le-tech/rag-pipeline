@@ -58,7 +58,6 @@ app = typer.Typer(help="RAG pipeline commands.", no_args_is_help=True)
 
 SUPPORTED_SUFFIXES = {".md", ".markdown", ".txt"}
 IMPLS = ("handwritten", "langchain")
-LC_EVAL_RETRIES = 6  # SDK backoff on 429s for LangChain eval runs (free tiers rate-limit often)
 LLM_KEY_NAMES = {"anthropic": "ANTHROPIC_API_KEY", "openrouter": "OPENROUTER_API_KEY"}
 PREVIEW_CHARS = 120
 
@@ -513,11 +512,11 @@ def _langchain_answerer(
 
     if mode == "agent":
         return factory.lc_agent_answerer(
-            lambda: factory.make_agent_model(settings, LC_EVAL_RETRIES),
+            lambda: factory.make_agent_model(settings),
             SearchTool(retriever, config),
             agent_limits(settings),
         )
-    generator = RetryingGenerator(LangChainGenerator(make_chat_model(settings, LC_EVAL_RETRIES)))
+    generator = RetryingGenerator(LangChainGenerator(make_chat_model(settings)))
     return factory.lc_pipeline_answerer(retriever, generator, config)
 
 

@@ -11,7 +11,14 @@ from collections.abc import Callable
 from typing import Any
 
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import (
+    AIMessage,
+    BaseMessage,
+    HumanMessage,
+    RemoveMessage,
+    SystemMessage,
+    ToolMessage,
+)
 from langgraph.graph import END, START, MessagesState, StateGraph
 
 from rag.agent.loop import (
@@ -49,6 +56,7 @@ def run_lc_agent(
     search: Callable[[str, int], SearchResult],
     limits: Limits,
     clock: Callable[[], float] = time.monotonic,
+    retry: Callable[[Callable[[], Any]], Any] = lambda call: call(),  # e.g. rate-limit backoff
 ) -> AgentResult:
     st = _State(messages=[])  # the graph state holds the transcript; _State keeps the counters
     start = clock()
@@ -56,7 +64,7 @@ def run_lc_agent(
     with_tools = model.bind_tools([SEARCH_TOOL])
 
     def agent(state: MessagesState) -> dict:
-        ai = with_tools.invoke([SystemMessage(AGENT_SYSTEM), *state["messages"]])
+        ai = retry(lambda: with_tools.invoke([SystemMessage(AGENT_SYSTEM), *state["messages"]]))
         _count(st, ai)
         return {"messages": [ai]}
 
@@ -68,9 +76,15 @@ def run_lc_agent(
 
     def tools(state: MessagesState) -> dict:
         ai = state["messages"][-1]
-        calls = [ToolCall(c["id"], c["name"], json.dumps(c["args"])) for c in ai.tool_calls]
+        calls = [
+            ToolCall(c["id"] or f"call-{i}", c["name"], json.dumps(c["args"]))
+            for i, c in enumerate(ai.tool_calls)
+        ]
         # Arguments the model sent as invalid JSON: pass the raw text so the tool reports the error.
-        calls += [ToolCall(c["id"], c["name"], c["args"] or "") for c in ai.invalid_tool_calls]
+        calls += [
+            ToolCall(c["id"] or f"invalid-{i}", c["name"], c["args"] or "")
+            for i, c in enumerate(ai.invalid_tool_calls)
+        ]
         replies = []
         for call in calls:
             # Every tool call needs a reply, so calls past the limit get one without running.
@@ -84,7 +98,9 @@ def run_lc_agent(
 
     def nudge(state: MessagesState) -> dict:
         st.steps += 1  # an empty reply costs a step, as in the hand-written loop
-        return {"messages": [HumanMessage(EMPTY_REPLY_MSG)]}
+        # The hand-written loop does not keep the empty reply in the transcript either.
+        empty = state["messages"][-1]
+        return {"messages": [RemoveMessage(id=empty.id), HumanMessage(EMPTY_REPLY_MSG)]}
 
     def gate(state: MessagesState) -> str:
         reason = _limit_reason(st, limits, clock() - start)
@@ -100,8 +116,12 @@ def run_lc_agent(
 
     def force(state: MessagesState) -> dict:
         # Limit reached: one last turn with tools off, so the model must answer or refuse.
-        ai = model.invoke(
-            [SystemMessage(AGENT_SYSTEM), *state["messages"], HumanMessage(FORCE_ANSWER)]
+        # Tools stay declared (the transcript holds tool calls) but tool_choice is "none".
+        no_tools = with_tools.bind(tool_choice="none")
+        ai = retry(
+            lambda: no_tools.invoke(
+                [SystemMessage(AGENT_SYSTEM), *state["messages"], HumanMessage(FORCE_ANSWER)]
+            )
         )
         _count(st, ai)
         stopped: Stop = outcome["stopped"]

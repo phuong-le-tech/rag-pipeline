@@ -19,8 +19,7 @@ def require_langchain() -> None:
         raise RuntimeError("LangChain is not installed; run: uv sync --extra langchain")
 
 
-def make_chat_model(settings: Settings, max_retries: int | None = None) -> "BaseChatModel":
-    """``max_retries`` is the SDK's 429 backoff: evals raise it, the web path keeps the default."""
+def make_chat_model(settings: Settings) -> "BaseChatModel":
     require_langchain()
     match settings.llm_backend:
         case "fake":
@@ -39,7 +38,6 @@ def make_chat_model(settings: Settings, max_retries: int | None = None) -> "Base
                 # OpenRouter models may ignore; the hand-written generator sends max_tokens.
                 extra_body={"max_tokens": settings.llm_max_tokens},
                 timeout=settings.llm_timeout_s,
-                **({} if max_retries is None else {"max_retries": max_retries}),
             )
     # shortcut: langchain-anthropic needs anthropic<2 (project pins >=2.1), so no anthropic yet.
     raise ValueError(

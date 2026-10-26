@@ -2,10 +2,11 @@ from itertools import chain, repeat
 
 from langchain_core.messages import AIMessage
 
-from rag.agent.loop import DEFAULT_LIMITS, Limits, ToolResultEvent
+from rag.agent.loop import DEFAULT_LIMITS, EMPTY_REPLY_MSG, Limits, ToolResultEvent
 from rag.agent.tools import SearchResult
 from rag.generate.prompt import REFUSAL
 from rag.lc.agent import run_lc_agent
+from rag.lc.factory import lc_agent_answerer
 from rag.lc.llm import fake_tool_chat_model
 from rag.retrieval.search import Hit
 
@@ -136,3 +137,56 @@ def test_parallel_calls_past_the_step_limit_are_not_run():
     )
     result = run(three, AIMessage(content="Use undo [1]."), limits=Limits(max_steps=2))
     assert result.tool_calls == 2 and result.stopped == "max_steps"
+
+
+def recording_model(*messages, fail_first=None):
+    """Scripted model that records every call's messages and bound kwargs."""
+    calls = []
+    base = type(fake_tool_chat_model([]))
+
+    class Recording(base):
+        def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+            calls.append((list(messages), kwargs))
+            if fail_first is not None and len(calls) == 1:
+                raise fail_first
+            return super()._generate(messages, stop, run_manager, **kwargs)
+
+    return Recording(messages=iter(messages)), calls
+
+
+def test_forced_final_turn_sends_tool_choice_none_like_the_handwritten_loop():
+    model, calls = recording_model(calls_search("q0"), AIMessage(content="Use undo [1]."))
+    run_lc_agent("how?", model, search, Limits(max_steps=1))
+    assert "tool_choice" not in calls[0][1]
+    assert calls[-1][1]["tool_choice"] == "none"
+
+
+def test_empty_reply_is_dropped_from_the_transcript_before_the_nudge():
+    model, calls = recording_model(AIMessage(content=""), AIMessage(content="Use undo [1]."))
+    run_lc_agent("how?", model, search, Limits())
+    assert not [m for m in calls[1][0] if m.type == "ai"]
+    assert calls[1][0][-1].content == EMPTY_REPLY_MSG
+
+
+def test_tool_call_without_an_id_does_not_crash():
+    no_id = AIMessage(
+        content="", tool_calls=[{"name": "search_docs", "args": {"query": "q"}, "id": None}]
+    )
+    result = run(no_id, AIMessage(content="Use undo [1]."))
+    assert result.stopped == "answered" and result.tool_calls == 1
+
+
+def test_rate_limited_model_call_is_retried_with_backoff():
+    import httpx
+    import openai
+
+    request = httpx.Request("POST", "https://openrouter.ai/api/v1/chat/completions")
+    limited = openai.RateLimitError(
+        "slow down", response=httpx.Response(429, request=request), body=None
+    )
+    model, calls = recording_model(AIMessage(content="Use undo [1]."), fail_first=limited)
+    sleeps = []
+    answerer = lc_agent_answerer(lambda: model, search, Limits(), sleep=sleeps.append)
+    answered = answerer("how?")
+    assert answered.stopped == "answered" and len(calls) == 2
+    assert sleeps == [5.0]

@@ -376,3 +376,22 @@ def test_langchain_answers_are_charged_to_the_same_daily_budget():
 def test_collection_lists_the_available_implementations():
     assert make_client().get("/api/collection").json()["impls"] == ["handwritten"]
     assert lc_client().get("/api/collection").json()["impls"] == ["handwritten", "langchain"]
+
+
+def test_failing_generator_build_does_not_spend_the_daily_budget():
+    from langchain_core.language_models import FakeListChatModel
+
+    from rag.lc.chain import LangChainGenerator
+
+    attempts = []
+
+    def build():
+        attempts.append(1)
+        if len(attempts) == 1:
+            raise RuntimeError("no model configured")
+        return LangChainGenerator(FakeListChatModel(responses=["Use rollout undo [1]."]))
+
+    c = make_client(lc_generator=build, daily_llm_limit=1)
+    body = {"question": "a", "impl": "langchain"}
+    assert events(c.post("/api/ask", json=body))[-1][1]["code"] == "failed"
+    assert events(c.post("/api/ask", json=body))[-1][0] == "done"  # the slot was not spent
