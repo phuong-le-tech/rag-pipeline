@@ -28,6 +28,13 @@ Repository = "https://github.com/phuong-le-tech/rag-pipeline"
 [project.scripts]
 rag = "rag.cli:app"
 
+[project.optional-dependencies]
+langchain = [
+    "langchain-core>=1.7.0",
+    "langchain-openai>=1.7.2",
+    "langgraph>=1.2.17",
+]
+
 [dependency-groups]
 dev = [
     "httpx>=0.28.1",

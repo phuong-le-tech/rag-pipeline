@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     anthropic_api_key: SecretStr | None = Field(default=None, alias="ANTHROPIC_API_KEY")
     openrouter_api_key: SecretStr | None = Field(default=None, alias="OPENROUTER_API_KEY")
 
+    # Which implementation answers: the hand-written pipeline or the LangChain one (rag.lc).
+    impl: Literal["handwritten", "langchain"] = "handwritten"
+
     # API (web UI backend)
     cors_origins: str = "http://localhost:3000"  # comma-separated
     rate_limit_per_minute: int = Field(default=10, gt=0)

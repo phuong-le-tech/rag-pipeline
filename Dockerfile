@@ -3,9 +3,9 @@ COPY --from=ghcr.io/astral-sh/uv:0.9 /uv /bin/uv
 WORKDIR /app
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy FASTEMBED_CACHE_PATH=/models
 COPY pyproject.toml uv.lock README.md ./
-RUN uv sync --frozen --no-dev --no-install-project
+RUN uv sync --frozen --no-dev --extra langchain --no-install-project
 COPY src ./src
-RUN uv sync --frozen --no-dev
+RUN uv sync --frozen --no-dev --extra langchain
 # Bake the embedding and reranker models into the image: no 150 MB download on cold start.
 RUN uv run --no-sync python -c "from rag.config import Settings; from rag.embed import make_embedder; \
 from rag.retrieval.rerank import make_reranker; s = Settings(_env_file=None); \
