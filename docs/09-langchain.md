@@ -29,8 +29,8 @@ Install the optional extra first: `uv sync --extra langchain`.
 
 In the web UI, a **LangChain** switch in Settings (also "Toggle LangChain" in the command
 palette) picks the implementation per question. It appears only when the server offers it, and
-the answer header, including a refusal, says "LangChain" when it answered. The UI covers the
-pipeline only: the API has no agent endpoint.
+the answer header, including a refusal, says "LangChain" when it answered. It combines with the
+Agent switch: the LangGraph agent runs, and its steps appear after the run.
 
 ### Things worth knowing
 
@@ -38,8 +38,8 @@ pipeline only: the API has no agent endpoint.
   `anthropic<2`, and this project pins `anthropic>=2.1`. Use `openrouter` (or `fake` offline).
 - **Retrieval is not re-implemented on purpose.** LangChain's `PGVector` store would change the
   schema and the scores. The SQL search and the reranker are the measured part of this project.
-- **The agent trace prints after the run** in the CLI with LangChain (the graph returns at the
-  end), instead of live as with the hand-written loop.
+- **The agent trace appears after the run** with LangChain, in the CLI and the UI (the graph
+  returns at the end), instead of live as with the hand-written loop.
 
 ## Comparing the two
 

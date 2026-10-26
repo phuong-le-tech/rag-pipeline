@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ApiError, askStream, effectiveImpl, ingestUpdate, parseSSE, splitCitations, toChunk, uploadStream } from "./api.ts";
+import { ApiError, askStream, effectiveAgent, effectiveImpl, ingestUpdate, parseSSE, splitCitations, stepLabel, toChunk, uploadStream } from "./api.ts";
 
 test("parseSSE splits complete events and keeps the partial tail", () => {
   const { events, rest } = parseSSE('event: token\ndata: {"text":"Hi"}\n\nevent: done\ndata: {"te');
@@ -71,4 +71,20 @@ test("effectiveImpl keeps the choice only when the server offers it", () => {
   assert.equal(effectiveImpl(info(["handwritten"]), "langchain"), "handwritten");
   assert.equal(effectiveImpl(info(), "langchain"), "handwritten"); // older server without `impls`
   assert.equal(effectiveImpl(null, "langchain"), "handwritten"); // collection not loaded yet
+});
+
+test("effectiveAgent needs both the setting and a server that offers it", () => {
+  const withAgent = { ...info(), agent: true };
+  assert.equal(effectiveAgent(withAgent, true), true);
+  assert.equal(effectiveAgent(withAgent, false), false);
+  assert.equal(effectiveAgent(info(), true), false); // server without agent mode
+  assert.equal(effectiveAgent(null, true), false);
+});
+
+test("stepLabel describes a search, a repeat and a failure", () => {
+  const base = { step: 1, query: "rollback", k: 5, count: 3, duplicate: false, error: null };
+  assert.equal(stepLabel(base), "rollback · 3 passages");
+  assert.equal(stepLabel({ ...base, count: 1 }), "rollback · 1 passage");
+  assert.equal(stepLabel({ ...base, duplicate: true }), "rollback · already searched");
+  assert.equal(stepLabel({ ...base, query: "", error: "Error: query is required." }), "Search failed: Error: query is required.");
 });

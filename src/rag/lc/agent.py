@@ -28,6 +28,7 @@ from rag.agent.loop import (
     Limits,
     Stop,
     _add,
+    _daily_limit_answer,
     _limit_reason,
     _result,
     _run_call,
@@ -57,6 +58,7 @@ def run_lc_agent(
     limits: Limits,
     clock: Callable[[], float] = time.monotonic,
     retry: Callable[[Callable[[], Any]], Any] = lambda call: call(),  # e.g. rate-limit backoff
+    take_budget: Callable[[], bool] = lambda: True,  # called before every model call
 ) -> AgentResult:
     st = _State(messages=[])  # the graph state holds the transcript; _State keeps the counters
     start = clock()
@@ -105,7 +107,10 @@ def run_lc_agent(
     def gate(state: MessagesState) -> str:
         reason = _limit_reason(st, limits, clock() - start)
         if reason is None:
-            return "agent"
+            if take_budget():
+                return "agent"
+            outcome["result"] = _result(st, _daily_limit_answer(st), "daily_limit")
+            return "stop"
         outcome["stopped"] = reason
         return "force"
 
@@ -117,6 +122,9 @@ def run_lc_agent(
     def force(state: MessagesState) -> dict:
         # Limit reached: one last turn with tools off, so the model must answer or refuse.
         # Tools stay declared (the transcript holds tool calls) but tool_choice is "none".
+        if not take_budget():
+            outcome["result"] = _result(st, _daily_limit_answer(st), "daily_limit")
+            return {}
         no_tools = with_tools.bind(tool_choice="none")
         ai = retry(
             lambda: no_tools.invoke(
@@ -138,10 +146,11 @@ def run_lc_agent(
         ("force", force),
     ]:
         graph.add_node(name, node)
-    graph.add_conditional_edges(START, gate, ["agent", "force"])
+    after_gate = {"agent": "agent", "force": "force", "stop": END}
+    graph.add_conditional_edges(START, gate, after_gate)
     graph.add_conditional_edges("agent", route, ["tools", "nudge", "finish"])
-    graph.add_conditional_edges("tools", gate, ["agent", "force"])
-    graph.add_conditional_edges("nudge", gate, ["agent", "force"])
+    graph.add_conditional_edges("tools", gate, after_gate)
+    graph.add_conditional_edges("nudge", gate, after_gate)
     graph.add_edge("finish", END)
     graph.add_edge("force", END)
 

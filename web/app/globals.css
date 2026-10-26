@@ -289,6 +289,11 @@ button.stage[aria-expanded="true"] .reveal svg{transform:rotate(180deg)}
 .cite{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:18px;margin:0 2px;padding:0 4px;border:1px solid var(--ac-ring);border-radius:var(--r1);background:var(--ac-soft);color:var(--ac-tx);font:600 var(--fs-xs)/1 var(--mono);vertical-align:1px;transition:background var(--t1) var(--ease)}
 button.cite{cursor:pointer}
 .cite.hl{background:var(--ac-solid)!important;color:var(--on-ac);box-shadow:none}
+.steps{list-style:none;margin:0 0 var(--sp2);padding:0;display:grid;gap:2px;counter-reset:st;font-size:var(--fs-s);line-height:1.4;color:var(--tx3)}
+.steps li{display:flex;gap:var(--sp2);counter-increment:st}
+.steps li::before{content:counter(st) ".";flex:none;min-width:1.4em}
+.steps li.dim{opacity:.7}
+.steps-wait{margin:0 0 var(--sp2);font-size:var(--fs-s);color:var(--tx3)}
 .srcs{margin-top:var(--sp4);display:grid;gap:2px}
 .srcs .lbl{margin-bottom:var(--sp1)}
 .src{display:grid;grid-template-columns:auto minmax(0,1fr);gap:var(--sp2);align-items:start;width:100%;padding:var(--sp2);text-align:left;border:0;border-radius:var(--r2);background:transparent;color:inherit}

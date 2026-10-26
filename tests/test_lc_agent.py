@@ -190,3 +190,31 @@ def test_rate_limited_model_call_is_retried_with_backoff():
     answered = answerer("how?")
     assert answered.stopped == "answered" and len(calls) == 2
     assert sleeps == [5.0]
+
+
+def test_exhausted_budget_before_the_first_call_stops_with_daily_limit():
+    result = run(AIMessage(content="never used"), take_budget=lambda: False)
+    assert result.stopped == "daily_limit" and result.llm_calls == 0
+    assert result.answer.text == ""
+
+
+def test_budget_is_charged_once_per_model_call_including_the_forced_turn():
+    charged = []
+    run(
+        calls_search("q0"),
+        AIMessage(content="Use undo [1]."),
+        limits=Limits(max_steps=1),
+        take_budget=lambda: charged.append(1) or True,
+    )
+    assert len(charged) == 2  # one agent turn, one forced final turn
+
+
+def test_budget_running_out_at_the_forced_turn_stops_with_daily_limit():
+    answers = iter([True, False])
+    result = run(
+        calls_search("q0"),
+        AIMessage(content="never used"),
+        limits=Limits(max_steps=1),
+        take_budget=lambda: next(answers),
+    )
+    assert result.stopped == "daily_limit" and result.llm_calls == 1
