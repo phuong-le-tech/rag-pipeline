@@ -1,5 +1,5 @@
 import type { CollectionInfo } from "@/lib/api.ts";
-import type { Chunk, Cite, Collection, Part, Retrieval, Settings, StageState } from "@/lib/types.ts";
+import type { Chunk, Cite, Collection, Impl, Part, Retrieval, Settings, StageState } from "@/lib/types.ts";
 
 export type IngKey = "parse" | "chunk" | "embed" | "index";
 export type QKey = "dense" | "keyword" | "fusion" | "rerank" | "generate" | "cite";
@@ -16,7 +16,7 @@ export type QState = {
 };
 export type Msg =
   | { role: "u"; text: string }
-  | { role: "a"; status: "streaming" | "done" | "refusal" | "error"; parts: Part[]; cites: Cite[]; ms?: number; message?: string; retryAt?: number };
+  | { role: "a"; status: "streaming" | "done" | "refusal" | "error"; parts: Part[]; cites: Cite[]; ms?: number; message?: string; retryAt?: number; impl?: Impl };
 export type Stats = { total: number; retrieve: number; rerank: number; gen: number; tin: number; tout: number };
 export type PopState = { id: string; n: string; anchor: HTMLElement; pinned: boolean } | null;
 
@@ -49,7 +49,7 @@ export type Store = {
 export const newStore = (): Store => ({
   col: null, up: null, info: null, apiDown: false, chunks: new Map(), phase: "empty", srcError: null, ing: null, chunkOpen: false,
   q: null, msgs: [], busy: false, fast: false, hl: null, fresh: null, stats: null,
-  set: { k: 5, rerank: true, one: true }, // same defaults as `rag ask` and the API
+  set: { k: 5, rerank: true, one: true, impl: "handwritten" }, // same defaults as `rag ask` and the API
   theme: "dark", menu: null, pal: { open: false, query: "", sel: 0 }, pop: null, sr: "",
 });
 

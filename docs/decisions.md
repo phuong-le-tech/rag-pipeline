@@ -255,3 +255,12 @@ On an existing DB the new column has no planner statistics until autovacuum or
 ## 2026-10-10: Python 3.12
 - **Context**: system Python is 3.14; ML wheels (torch, sentence-transformers) lag new releases.
 - **Decision**: pin `>=3.12,<3.13`.
+
+## 2026-10-26: LangChain as a second, measured implementation
+- **Context**: the first decision (2026-10-10) chose thin wrappers over a framework. The project
+  now also needs LangChain experience, and "from scratch vs framework" is itself a result.
+- **Decision**: add `src/rag/lc/` (LCEL chain, LangGraph agent, `BaseRetriever` over the existing
+  search) beside the hand-written code, which stays the default. Same prompt, tools, citation
+  check and judge; only the orchestration differs. Optional extra `langchain`.
+- **Consequence**: `rag compare` can report both. `langchain-anthropic` is left out because it
+  needs `anthropic<2`; `impl=langchain` supports `openrouter` and `fake` for now.

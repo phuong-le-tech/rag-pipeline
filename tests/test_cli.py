@@ -715,3 +715,114 @@ def test_eval_answers_rejects_k_in_agent_mode_before_connecting(answers_run, mon
     assert result.exit_code == 2
     assert "--k applies to pipeline mode only" in result.output
     assert seen["evaluate"] is None
+
+
+def test_eval_answers_impl_defaults_to_handwritten(answers_run):
+    invoke, seen = answers_run
+
+    result = invoke()
+
+    assert result.exit_code == 0, result.output
+    assert seen["meta"]["impl"] == "handwritten"
+
+
+def test_eval_answers_impl_langchain_uses_the_lc_pipeline_answerer(answers_run, monkeypatch):
+    from rag.lc import factory
+
+    invoke, seen = answers_run
+    built = {}
+
+    def spy(retriever, generator, config):
+        built["generator"] = generator
+        return lambda question: None
+
+    monkeypatch.setattr(factory, "lc_pipeline_answerer", spy)
+
+    result = invoke("--impl", "langchain")
+
+    assert result.exit_code == 0, result.output
+    assert seen["meta"]["impl"] == "langchain"
+    assert isinstance(built["generator"], cli.RetryingGenerator)
+
+
+def test_eval_answers_impl_langchain_agent_mode_uses_the_lc_agent_answerer(
+    answers_run, monkeypatch
+):
+    from rag.lc import factory
+
+    invoke, seen = answers_run
+    built = {}
+
+    def spy(make_model, search, limits):
+        built["limits"] = limits
+        return lambda question: None
+
+    monkeypatch.setattr(factory, "lc_agent_answerer", spy)
+
+    result = invoke("--impl", "langchain", "--mode", "agent")
+
+    assert result.exit_code == 0, result.output
+    assert built["limits"] == cli.agent_limits(Settings())
+    assert seen["agent"] is None  # the hand-written agent answerer was not built
+    assert seen["meta"]["impl"] == "langchain"
+
+
+def test_unknown_impl_is_rejected(answers_run):
+    invoke, _ = answers_run
+
+    result = invoke("--impl", "magic")
+
+    assert result.exit_code == 2
+    assert "magic" in result.output
+
+
+def test_impl_langchain_without_the_extra_gives_a_clear_error(answers_run, monkeypatch):
+    import importlib.util
+
+    invoke, _ = answers_run
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: None)
+
+    result = invoke("--impl", "langchain")
+
+    assert result.exit_code == 2
+    assert "uv sync --extra langchain" in result.output
+    assert "Traceback" not in result.output
+
+
+def test_impl_langchain_rejects_the_anthropic_backend(answers_run, monkeypatch):
+    invoke, _ = answers_run
+    monkeypatch.setenv("RAG_LLM_BACKEND", "anthropic")
+
+    result = invoke("--impl", "langchain", "--judge-backend", "fake")
+
+    assert result.exit_code == 2
+    assert "openrouter" in result.output
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("flags", [[], ["--agent"]])
+def test_ask_impl_langchain_prints_answer_and_cited_sources(
+    flags, tmp_path, monkeypatch, test_database_url
+):
+    (tmp_path / "tasks").mkdir()
+    (tmp_path / "tasks" / "rollback.md").write_text(
+        "---\ntitle: Rollback\n---\nUse kubectl rollout undo to revert a Deployment.\n"
+    )
+    monkeypatch.setenv("RAG_DATABASE_URL", test_database_url)
+    monkeypatch.setenv("RAG_EMBEDDING_BACKEND", "fake")
+    monkeypatch.setenv("RAG_EMBEDDING_DIM", "8")
+    monkeypatch.setenv("RAG_LLM_BACKEND", "fake")
+    with psycopg.connect(test_database_url) as conn:
+        conn.execute("TRUNCATE documents RESTART IDENTITY CASCADE")
+    runner.invoke(cli.app, ["ingest", str(tmp_path)])
+
+    result = runner.invoke(
+        cli.app, ["ask", "how do I revert?", "--impl", "langchain", "--no-rerank", *flags]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "fake" in result.output and "answer" in result.output
+    assert "[1] Rollback" in result.output
+    if flags:
+        assert 'search_docs("rollback", k=5)' in result.output
+        assert "stopped: answered" in result.output

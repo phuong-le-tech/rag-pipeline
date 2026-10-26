@@ -415,7 +415,7 @@ function Message({ m, S, A, h }: P & { m: Msg }) {
   const done = m.status === "done";
   return (
     <article className="msg">
-      <Hd r={<span className="mono">{done ? fmtMs(m.ms || 0) : "streaming"}</span>} />
+      <Hd r={<span className="mono">{m.impl === "langchain" && "LangChain · "}{done ? fmtMs(m.ms || 0) : "streaming"}</span>} />
       <p className="ans">
         {m.parts.map((p, i) => (p.t === "t" ? <Md key={i} text={p.v} /> : citeBtn(p.id, p.n, i)))}
         {!done && <span className="caret" />}

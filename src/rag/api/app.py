@@ -1,5 +1,7 @@
 """HTTP API for the web UI: each retrieval stage and the answer stream as SSE events."""
 
+import functools
+import importlib.util
 import json
 import logging
 import re
@@ -12,7 +14,7 @@ from contextlib import AbstractContextManager, asynccontextmanager, contextmanag
 from dataclasses import dataclass, replace
 from email.parser import BytesParser
 from email.policy import HTTP
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -24,6 +26,7 @@ from rag.config import Settings
 from rag.generate.answer import Answer, stream_answer
 from rag.generate.generator import Generator
 from rag.ingest.upload import MAX_UPLOAD_BYTES
+from rag.lc.llm import LANGCHAIN_BACKENDS
 from rag.retrieval.retriever import RetrieverConfig
 from rag.retrieval.search import Hit
 
@@ -45,6 +48,7 @@ class AskRequest(BaseModel):
     rerank: bool = True
     max_one_per_page: bool = True
     collection: str | None = Field(default=None, pattern=COLLECTION_ID)  # None = Kubernetes docs
+    impl: Literal["handwritten", "langchain"] = "handwritten"
 
 
 @dataclass(frozen=True)
@@ -54,6 +58,11 @@ class Services:
     stats: Callable[..., dict]  # stats(collection="k8s")
     # index_upload(collection, filename, text) -> (event, data) pairs; see ingest.upload
     index_upload: Callable[[str, str, str], Iterator[tuple[str, dict]]] | None = None
+    # Builds the LangChain generator on first use; None when the extra or backend is unavailable.
+    lc_generator: Callable[[], Generator] | None = None
+
+    def impls(self) -> list[str]:
+        return ["handwritten", "langchain"] if self.lc_generator else ["handwritten"]
 
 
 def hit_json(h: Hit) -> dict:
@@ -108,7 +117,30 @@ def default_services(settings: Settings) -> Services:  # pragma: no cover - need
             purge_expired(conn, settings.upload_ttl_hours)  # lazy TTL: no scheduler needed
             yield from ingest_upload(conn, embedder, settings, collection, filename, text)
 
-    return Services(retriever_factory, make_generator(settings), stats, index_upload)
+    lc_generator = None
+    if importlib.util.find_spec("langchain_core") and settings.llm_backend in LANGCHAIN_BACKENDS:
+
+        @functools.cache
+        def lc_generator() -> Generator:
+            from rag.lc.chain import LangChainGenerator
+            from rag.lc.llm import make_chat_model
+
+            return LangChainGenerator(make_chat_model(settings))
+
+    return Services(retriever_factory, make_generator(settings), stats, index_upload, lc_generator)
+
+
+def retrieve(
+    impl: str, retriever: Any, question: str, config: RetrieverConfig, on_stage: Any
+) -> tuple[Hit, ...]:
+    if impl == "langchain":  # same search, called through the LangChain retriever interface
+        from rag.lc.retriever import HybridRetriever, hits_of
+
+        docs = HybridRetriever(retriever=retriever, config=config, on_stage=on_stage).invoke(
+            question
+        )
+        return hits_of(docs)
+    return tuple(retriever.retrieve(question, config, on_stage=on_stage))
 
 
 def run_ask(
@@ -117,6 +149,7 @@ def run_ask(
     services: Services,
     budget: DailyBudget,
     release: Callable[[], None],
+    impl: str = "handwritten",
 ) -> Iterator[str]:
     """One ask as SSE: stages, tokens, then done or error. Always releases its slot."""
     rid, start = uuid.uuid4().hex[:8], time.perf_counter()
@@ -135,17 +168,20 @@ def run_ask(
             staged.append(sse("stage", payload))
 
         with services.retriever_factory() as retriever:
-            hits = tuple(retriever.retrieve(question, config, on_stage=on_stage))
+            hits = retrieve(impl, retriever, question, config, on_stage)
         yield from staged
         # The passages the LLM will read (after rerank and the per-page cap).
         yield sse("context", {"hits": [hit_json(h) for h in hits]})
+        generator = (
+            services.lc_generator() if impl == "langchain" else services.generator
+        )  # built before the budget is spent
         if hits and not budget.take():
             status = "daily_limit"
             yield sse("error", {"code": "daily_limit", "message": DAILY_LIMIT_MSG})
             return
         gen_start, generating = time.perf_counter(), True
         result: Answer | None = None
-        for item in stream_answer(question, hits, services.generator):
+        for item in stream_answer(question, hits, generator):
             if isinstance(item, Answer):
                 result = item
             else:
@@ -159,6 +195,7 @@ def run_ask(
                 "refused": result.refused,
                 "sources": [{"n": s.number, "id": s.hit.chunk_id} for s in result.sources],
                 "invalid": list(result.invalid_citations),
+                "impl": impl,
                 "ms": round((time.perf_counter() - start) * 1000),
             },
         )
@@ -295,10 +332,13 @@ def create_app(settings: Settings, services: Services | None = None) -> FastAPI:
             **stats,
             "llm_model": llm_model,
             "embedding_model": settings.embedding_model_name(),
+            "impls": request.app.state.services.impls(),
         }
 
     @app.post("/api/ask")
     def ask(body: AskRequest, request: Request):
+        if body.impl not in request.app.state.services.impls():
+            return JSONResponse({"error": "impl_unavailable"}, status_code=422)
         wait = request.app.state.limiter.check(client_key(request))
         if wait:
             return JSONResponse(
@@ -316,7 +356,12 @@ def create_app(settings: Settings, services: Services | None = None) -> FastAPI:
             config = replace(config, max_per_source=None)
         release = slot_releaser(slots)
         stream = run_ask(
-            body.question, config, request.app.state.services, request.app.state.budget, release
+            body.question,
+            config,
+            request.app.state.services,
+            request.app.state.budget,
+            release,
+            body.impl,
         )
         # A client that disconnects before the first chunk makes Starlette drop the generator
         # unstarted, so its `finally` never runs; release the slot when it is collected.

@@ -10,7 +10,9 @@ keyword search, rank fusion, cross-encoder reranking, the streamed answer and th
 behind each citation.
 
 Built without a RAG framework so every stage is visible, tested and measured. Every default is
-backed by an evaluation on 94 reviewed questions.
+backed by an evaluation on 94 reviewed questions. A second, optional implementation of the
+pipeline and the agent uses LangChain and LangGraph, and the two are measured against each other
+([chapter 9](docs/09-langchain.md)).
 
 - **Hybrid retrieval**: pgvector (HNSW) + Postgres full-text, fused with Reciprocal Rank Fusion
 - **Cross-encoder reranking** and one-chunk-per-page diversity (+0.15 Hit@5 over plain hybrid)
@@ -133,6 +135,28 @@ default and agent mode stays opt-in.
 Multi-part questions are not evaluated yet, so the agent's expected edge there is untested. Details and the step-limit runs in
 [docs/08-agent.md](docs/08-agent.md).
 
+### Hand-written vs LangChain
+
+The pipeline also runs through LangChain (`--impl langchain`, [chapter 9](docs/09-langchain.md)). On the same half sample (54 questions), model, judge and settings, quality, tokens and calls are indistinguishable; only the orchestration code is smaller (326 against 600 lines, not like-for-like).
+
+| Metric | Hand-written | LangChain |
+|---|---:|---:|
+| Answer rate (answerable) | 0.872 | 0.872 |
+| False refusals | 0.128 | 0.128 |
+| Faithfulness (supported claims) | 0.940 | 0.935 |
+| Correct: yes | 0.850 | 0.846 |
+| Correct: partial | 0.125 | 0.128 |
+| Citation coverage (sentences cited) | 0.572 | 0.609 |
+| Answers with invented citations | 0.000 | 0.000 |
+| Refusal on unanswerable | 1.000 | 1.000 |
+| LLM calls per question | 1.00 | 1.00 |
+| Tokens per question | 2007 | 2009 |
+| Latency p50 (ms) | 9918 | 10693 |
+| Latency p95 (ms) | 22979 | 28878 |
+| Lines of code | 600 | 326 |
+
+Agent mode, 29 questions (25 answerable, 4 unanswerable): calls, searches and tokens match (2.3 calls, 1.3 searches, about 4,400 tokens per question); quality and latency differences are within noise at that size. One run each; details in [chapter 9](docs/09-langchain.md).
+
 ## Getting started
 
 **Prerequisites**: [uv](https://docs.astral.sh/uv/), Docker, Node.js 22+, and an
@@ -171,9 +195,11 @@ uv run rag ask "How do I roll back a deployment?"
 | `rag ingest CORPUS_ROOT [--no-prune]` | Incremental load → chunk → embed → store |
 | `rag search QUERY [--mode dense\|keyword\|hybrid] [--rerank] [-k N] [--no-generated]` | Ranked passages, no LLM |
 | `rag ask QUESTION [-k N] [--rewrite] [--no-rerank]` | Cited answer, streamed |
+| `rag ask QUESTION --impl langchain` | Same pipeline through LangChain (LCEL); also works with `--agent` (LangGraph). Needs `uv sync --extra langchain` |
 | `rag ask QUESTION --agent [--no-rerank]` | Agent mode: the LLM decides what to search and how many passages (k 1-10) per search; each step printed; answer not streamed |
 | `rag eval [--config NAME] [--limit N]` | Retrieval metrics per configuration, split by question origin |
-| `rag eval-answers [--config NAME] [--judge-backend B] [--mode agent] [--judge-model ID] [--judge-max-tokens N] [--resume FILE]` | Faithfulness, correctness, citations, refusals (LLM judge) |
+| `rag eval-answers [--config NAME] [--impl handwritten\|langchain] [--judge-backend B] [--mode agent] [--judge-model ID] [--judge-max-tokens N] [--resume FILE]` | Faithfulness, correctness, citations, refusals (LLM judge) |
+| `rag compare A.json B.json` | Table of a hand-written and a LangChain `eval-answers` run (same mode) |
 | `rag draft-questions --n N --seed S` | LLM-drafted golden questions (resumable) |
 | `rag review-drafts` | Human review of drafts: y / e / n / q (resumable) |
 
@@ -191,7 +217,9 @@ protected by the [guards](#security-and-privacy) below.
 | `POST /api/collections` | Upload a `.md`/`.txt` file (multipart `file`) or JSON `{"text"}`; streams `stage` events (`load`, `clean`, `chunk`, `embed`, `store`) then `done {collection, docs, chunks}`. Max 1 MB, UTF-8, 300 chunks. Stored up to 24 h, never logged |
 | `POST /api/ask` | Answer a question as a server-sent event stream; optional `collection` (32 hex) asks over an upload |
 
-`POST /api/ask` body: `{"question": "...", "k": 5, "rerank": true, "max_one_per_page": true}`
+`POST /api/ask` body: `{"question": "...", "k": 5, "rerank": true, "max_one_per_page": true, "impl": "handwritten"}`.
+`impl` is `handwritten` (default) or `langchain` (422 `impl_unavailable` when the extra is not installed);
+`GET /api/collection` lists the available `impls`, and the `done` event says which one answered.
 (`question` 1-500 characters, `k` 3-10). The response is `text/event-stream`:
 
 | Event | Payload |
@@ -218,6 +246,7 @@ Environment variables (or `.env` locally). Settings use the `RAG_` prefix; API k
 |---|---|---|
 | `RAG_DATABASE_URL` | `postgresql://rag:rag@localhost:5433/rag` | |
 | `OPENROUTER_API_KEY` | - | needed for answers with the default backend |
+| `RAG_IMPL` | `handwritten` | `langchain` answers through LangChain/LangGraph ([chapter 9](docs/09-langchain.md)); needs the `langchain` extra and the `openrouter` or `fake` backend |
 | `RAG_LLM_BACKEND` | `openrouter` | `anthropic` (needs `ANTHROPIC_API_KEY`), `fake` (tests) |
 | `RAG_OPENROUTER_MODEL` | - | **required** with the default backend; the API refuses to start without it. Pick one from [openrouter.ai/models?q=free](https://openrouter.ai/models?q=free): free models are withdrawn or rate-limited often, so there is no default |
 | `RAG_LLM_MODEL` | `claude-sonnet-5-5` | Anthropic backend only |
@@ -315,7 +344,10 @@ src/rag/
                        answer.py
   agent/               loop.py (tool-calling loop, passage registry, limits), tools.py (search_docs),
                        prompt.py
-  evals/               metrics.py, golden.py, runner.py, drafting.py, review.py, judge.py, answers.py
+  lc/                  optional LangChain/LangGraph implementation: retriever.py, chain.py (LCEL),
+                       agent.py (LangGraph), llm.py, factory.py (needs `uv sync --extra langchain`)
+  evals/               metrics.py, golden.py, runner.py, drafting.py, review.py, judge.py, answers.py,
+                       compare.py
   config.py, db.py, schema.sql, cli.py
 web/                   Next.js UI: components/, lib/api.ts (SSE client), app/privacy, app/legal
 evals/                 golden.jsonl, unanswerable.jsonl, review audit trail (results gitignored)

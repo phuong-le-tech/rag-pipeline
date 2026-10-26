@@ -49,14 +49,17 @@ class StagedFake:
         return [HIT]
 
 
-def make_client(gen=None, **overrides):
+def make_client(gen=None, lc_generator=None, **overrides):
     @contextmanager
     def factory():
         yield StagedFake()
 
     settings = Settings(_env_file=None, **overrides)
     services = Services(
-        factory, gen or FakeGenerator("Use rollout undo [1]."), lambda: {"docs": 1, "chunks": 1}
+        factory,
+        gen or FakeGenerator("Use rollout undo [1]."),
+        lambda: {"docs": 1, "chunks": 1},
+        lc_generator=lc_generator,
     )
     return TestClient(create_app(settings, services))
 
@@ -309,3 +312,86 @@ def test_collection_stats_by_id():
     assert c.get(f"/api/collection?id={'b' * 32}").status_code == 404
     assert c.get("/api/collection?id=nope").status_code == 422
     assert c.get("/api/collection").json()["name"] == "Kubernetes docs"
+
+
+def lc_client(reply="Use rollout undo [1].", **overrides):
+    from langchain_core.language_models import FakeListChatModel
+
+    from rag.lc.chain import LangChainGenerator
+
+    generator = LangChainGenerator(FakeListChatModel(responses=[reply]))
+    return make_client(lc_generator=lambda: generator, **overrides)
+
+
+def test_ask_defaults_to_handwritten():
+    ev = events(make_client().post("/api/ask", json={"question": "roll back?"}))
+    assert ev[-1][1]["impl"] == "handwritten"
+
+
+def test_ask_impl_langchain_streams_the_same_events():
+    hand = events(make_client().post("/api/ask", json={"question": "roll back?"}))
+    lc = events(lc_client().post("/api/ask", json={"question": "roll back?", "impl": "langchain"}))
+    assert [e for e, _ in lc if e != "token"] == [e for e, _ in hand if e != "token"]
+    assert "token" in [e for e, _ in lc]
+    done = lc[-1][1]
+    assert done["impl"] == "langchain" and done["sources"] == [{"n": 1, "id": 7}]
+    assert done["text"] == hand[-1][1]["text"]
+
+
+def test_unknown_impl_is_422():
+    r = make_client().post("/api/ask", json={"question": "a", "impl": "magic"})
+    assert r.status_code == 422
+
+
+def test_langchain_unavailable_is_a_clear_422_and_takes_no_slot():
+    c = make_client(max_concurrent_asks=1)
+    r = c.post("/api/ask", json={"question": "a", "impl": "langchain"})
+    assert r.status_code == 422 and r.json() == {"error": "impl_unavailable"}
+    assert c.post("/api/ask", json={"question": "a"}).status_code == 200  # slot still free
+
+
+def test_langchain_failure_ends_with_error_event():
+    from langchain_core.language_models import FakeListChatModel
+
+    from rag.lc.chain import LangChainGenerator
+
+    class Boom(LangChainGenerator):
+        def stream(self, system, user):
+            yield "partial "
+            raise TimeoutError("upstream timeout")
+
+    boom = Boom(FakeListChatModel(responses=["x"]))
+    c = make_client(lc_generator=lambda: boom)
+    ev = events(c.post("/api/ask", json={"question": "a", "impl": "langchain"}))
+    assert ev[-1][0] == "error" and ev[-1][1]["code"] == "llm_failed"
+
+
+def test_langchain_answers_are_charged_to_the_same_daily_budget():
+    c = lc_client(daily_llm_limit=1)
+    body = {"question": "a", "impl": "langchain"}
+    assert events(c.post("/api/ask", json=body))[-1][0] == "done"
+    assert events(c.post("/api/ask", json=body))[-1][1]["code"] == "daily_limit"
+
+
+def test_collection_lists_the_available_implementations():
+    assert make_client().get("/api/collection").json()["impls"] == ["handwritten"]
+    assert lc_client().get("/api/collection").json()["impls"] == ["handwritten", "langchain"]
+
+
+def test_failing_generator_build_does_not_spend_the_daily_budget():
+    from langchain_core.language_models import FakeListChatModel
+
+    from rag.lc.chain import LangChainGenerator
+
+    attempts = []
+
+    def build():
+        attempts.append(1)
+        if len(attempts) == 1:
+            raise RuntimeError("no model configured")
+        return LangChainGenerator(FakeListChatModel(responses=["Use rollout undo [1]."]))
+
+    c = make_client(lc_generator=build, daily_llm_limit=1)
+    body = {"question": "a", "impl": "langchain"}
+    assert events(c.post("/api/ask", json=body))[-1][1]["code"] == "failed"
+    assert events(c.post("/api/ask", json=body))[-1][0] == "done"  # the slot was not spent

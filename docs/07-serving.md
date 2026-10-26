@@ -44,7 +44,8 @@ stream reader (not `EventSource`, which can't send a POST body).
 
 ### The API ([`src/rag/api/app.py`](../src/rag/api/app.py))
 
-`POST /api/ask` with `{"question", "k", "rerank", "max_one_per_page"}` answers with a stream:
+`POST /api/ask` with `{"question", "k", "rerank", "max_one_per_page", "impl"}` answers with a stream
+(`impl` is `handwritten` or `langchain`, see [chapter 9](09-langchain.md); the events are identical):
 
 | Event | When | Payload |
 |---|---|---|

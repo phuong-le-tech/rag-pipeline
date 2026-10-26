@@ -7,7 +7,7 @@ from collections.abc import Callable, Iterator, Sequence
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from rag.agent.loop import Limits, run_agent
+from rag.agent.loop import AgentResult, Limits, run_agent
 from rag.agent.tools import SearchResult
 from rag.evals.drafting import with_retry
 from rag.evals.golden import GoldenItem
@@ -53,12 +53,15 @@ class Answered:
 
 
 def pipeline_answerer(
-    retriever: SupportsRetrieve, generator: Generator, config: RetrieverConfig
+    retriever: SupportsRetrieve,
+    generator: Generator,
+    config: RetrieverConfig,
+    answer_fn: Callable[..., Answer] = answer_question,  # rag.lc swaps in its LCEL chain
 ) -> Callable[[str], Answered]:
     def answer(question: str) -> Answered:
         usage = usage_of(generator)
         before = (usage.input_tokens, usage.output_tokens) if usage else (0, 0)
-        result = answer_question(question, retriever, generator, config)
+        result = answer_fn(question, retriever, generator, config)
         tokens = (None, None)  # no usage block, or this question moved no counter
         if (
             usage is not None
@@ -79,16 +82,20 @@ def agent_answerer(
 ) -> Callable[[str], Answered]:
     def answer(question: str) -> Answered:
         *_, result = run_agent(question, make_llm(), search, limits)  # last item is the AgentResult
-        return Answered(
-            result.answer,
-            result.llm_calls,
-            result.tool_calls,
-            result.input_tokens,
-            result.output_tokens,
-            result.stopped,
-        )
+        return answered_from_agent(result)
 
     return answer
+
+
+def answered_from_agent(result: AgentResult) -> Answered:
+    return Answered(
+        result.answer,
+        result.llm_calls,
+        result.tool_calls,
+        result.input_tokens,
+        result.output_tokens,
+        result.stopped,
+    )
 
 
 @dataclass(frozen=True)
