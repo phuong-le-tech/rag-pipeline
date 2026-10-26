@@ -1,7 +1,8 @@
 """LangChain chat model built from the same settings as ``make_generator``."""
 
 import importlib.util
-from typing import TYPE_CHECKING
+from collections.abc import Iterable
+from typing import TYPE_CHECKING, Any
 
 from rag.config import Settings
 from rag.generate.generator import FAKE_ANSWER
@@ -38,3 +39,16 @@ def make_chat_model(settings: Settings) -> "BaseChatModel":
         f"llm_backend {settings.llm_backend!r} is not available with impl=langchain; "
         "use openrouter or fake"
     )
+
+
+def fake_tool_chat_model(messages: Iterable[Any]) -> "BaseChatModel":
+    """Scripted chat model that accepts ``bind_tools``; offline runs and tests (like
+    ``ScriptedToolGenerator``). Replies are the given ``AIMessage``s, one per model call."""
+    require_langchain()
+    from langchain_core.language_models import GenericFakeChatModel
+
+    class FakeToolChatModel(GenericFakeChatModel):
+        def bind_tools(self, tools: Any, **kwargs: Any) -> "FakeToolChatModel":
+            return self
+
+    return FakeToolChatModel(messages=iter(messages))
