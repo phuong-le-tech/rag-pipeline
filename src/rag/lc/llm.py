@@ -35,7 +35,9 @@ def make_chat_model(settings: Settings, max_retries: int | None = None) -> "Base
                 model=settings.require_openrouter_model(),
                 base_url=settings.openrouter_base_url,
                 api_key=key.get_secret_value() if key else None,
-                max_tokens=settings.llm_max_tokens,
+                # extra_body, not max_tokens: ChatOpenAI would send max_completion_tokens, which
+                # OpenRouter models may ignore; the hand-written generator sends max_tokens.
+                extra_body={"max_tokens": settings.llm_max_tokens},
                 timeout=settings.llm_timeout_s,
                 **({} if max_retries is None else {"max_retries": max_retries}),
             )

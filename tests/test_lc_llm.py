@@ -46,3 +46,19 @@ def test_require_langchain_message(monkeypatch):
     monkeypatch.setattr(importlib.util, "find_spec", lambda name: None)
     with pytest.raises(RuntimeError, match=r"LangChain is not installed; run: uv sync --extra lan"):
         require_langchain()
+
+
+def test_openrouter_request_sends_max_tokens_like_the_handwritten_generator():
+    from langchain_core.messages import HumanMessage
+
+    from rag.lc.llm import make_chat_model
+
+    s = settings(
+        llm_backend="openrouter",
+        openrouter_model="vendor/m",
+        OPENROUTER_API_KEY="k",
+        llm_max_tokens=77,
+    )
+    payload = make_chat_model(s)._get_request_payload([HumanMessage("hi")])
+    assert payload["extra_body"] == {"max_tokens": 77}  # the client merges this into the body
+    assert "max_completion_tokens" not in payload
