@@ -21,9 +21,12 @@ pipeline and the agent uses LangChain and LangGraph, and the two are measured ag
 - **Glass-box UI**: each stage streams over server-sent events with its hits, scores and timing;
   drop a Markdown file or paste text to watch it ingested (load, clean, chunk, embed, store) and
   ask questions over it (kept 24 h, then deleted)
-- **Opt-in agent mode**: a hand-written tool-calling loop (no framework) where the model decides
+- **Opt-in agent mode**: a hand-written tool-calling loop where the model decides
   what to search and how often; on the same 94 + 15 questions it cuts false refusals from 7 to 1
   for ~2.9× the tokens, so the fixed pipeline stays the default
+- **LangChain alongside**: the same pipeline and agent also run through LangChain (LCEL) and
+  LangGraph, selectable per question in the UI and with `--impl langchain`; measured equal on the
+  eval subset, with about half the orchestration code ([chapter 9](docs/09-langchain.md))
 - **Production-ready API**: rate limiting, daily LLM budget, concurrency cap, CORS allowlist,
   CSP, no personal data stored; Docker image with models baked in
 - **Runs on free tiers**: local embeddings and reranker (no key), free LLM via OpenRouter
@@ -166,6 +169,7 @@ run locally without any key).
 ```bash
 git clone https://github.com/phuong-le-tech/rag-pipeline && cd rag-pipeline
 uv sync                                   # Python 3.12 venv + dependencies
+                                          # add --extra langchain for the LangChain implementation
 docker compose up -d                      # Postgres 17 + pgvector on localhost:5433
 cp .env.example .env                      # gitignored; set OPENROUTER_API_KEY and RAG_OPENROUTER_MODEL
 uv run rag init-db                        # tables and indexes
@@ -295,7 +299,12 @@ dashboard, never in the repo.
    Railway waits for `/ready` before routing traffic.
 4. **UI**: import the repo in Vercel with root directory `web`, and set `NEXT_PUBLIC_API_URL`,
    `NEXT_PUBLIC_PUBLISHER_NAME` and `NEXT_PUBLIC_CONTACT_EMAIL`.
-5. **Check**: `curl https://<api-domain>/ready` returns the chunk count; ask a question on the
+5. **LangChain in production** needs nothing extra: the [`Dockerfile`](Dockerfile) installs the
+   `langchain` extra, and the UI shows its switch when `/api/collection` lists `langchain` (it is
+   hidden with `RAG_LLM_BACKEND=anthropic`, which LangChain does not support yet). LangChain
+   answers share the same rate limit, daily budget and concurrency cap. Do not set
+   `LANGSMITH_*` or `LANGCHAIN_*` variables: they would turn on tracing to a third party.
+6. **Check**: `curl https://<api-domain>/ready` returns the chunk count; ask a question on the
    site; ask 11 questions within a minute and the 11th is rate-limited; from another network
    (a phone on mobile data) you can still ask, which confirms the limiter sees real client IPs.
 
@@ -321,6 +330,7 @@ not to enter personal data. Details on the in-app [`/privacy`](web/app/privacy/p
 ## Testing
 
 ```bash
+uv sync --extra langchain                       # the LangChain tests need the extra
 uv run ruff format --check . && uv run ruff check --no-cache .
 uv run pytest -m "not integration" --cov=rag    # unit tests, no network or keys (coverage ~83%)
 uv run pytest -m integration                    # needs docker compose Postgres
@@ -364,6 +374,9 @@ Dockerfile, railway.json, docker-compose.yml
   provider may log prompts. Set `RAG_LLM_BACKEND=anthropic` for Claude.
 - **No authentication**: the API is public by design and protected only by the guards above.
 - **Stage events arrive together** once retrieval finishes (~1.5 s), then the answer streams.
+- **LangChain is optional and partial**: no Claude backend yet (`langchain-anthropic` needs
+  `anthropic<2`), no agent mode in the web UI (the API has no agent endpoint), and the CLI prints
+  the LangChain agent's steps after the run, not live.
 - **Agent mode is opt-in and slower**: median latency about 11 s against 5 s, and its citations
   are sparser (22% of sentences cited against 46% for the pipeline).
 
