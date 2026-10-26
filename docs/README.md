@@ -22,6 +22,7 @@ Each chapter follows the same shape:
 | 6 | [Evaluation: golden sets, metrics, ablations](06-evaluation.md) | ✅ |
 | 7 | [Serving: the glass-box UI, API, streaming, deployment](07-serving.md) | 🚧 Phase 5 (live demo with uploads; PDF/URL next) |
 | 8 | [Agent mode: the model decides what to search](08-agent.md) | 🚧 Loop, CLI and evaluation done; multi-part questions not evaluated yet |
+| 9 | [LangChain: the same pipeline with a framework](09-langchain.md) | 🚧 Implemented and tested; paired eval run pending |
 
 Reference:
 

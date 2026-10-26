@@ -32,6 +32,7 @@ from rag.evals.answers import (
     pipeline_answerer,
     write_answer_results,
 )
+from rag.evals.compare import LOC_PATHS, compare_markdown, count_lines, impl_of
 from rag.evals.drafting import draft_items, sample_chunks
 from rag.evals.golden import load_golden, unknown_sources
 from rag.evals.judge import load_unanswerable
@@ -485,6 +486,22 @@ def eval_answers_cmd(
     typer.echo(answers_markdown(report))
     path = write_answer_results(out, report, meta)
     typer.secho(f"Saved {path}", fg="green")
+
+
+@app.command("compare")
+def compare_cmd(
+    first: Annotated[Path, typer.Argument(exists=True, dir_okay=False, help="Answers JSON.")],
+    second: Annotated[Path, typer.Argument(exists=True, dir_okay=False, help="Answers JSON.")],
+) -> None:
+    """Table of a hand-written and a LangChain eval-answers run (same mode), in either order."""
+    results = sorted(
+        (json.loads(path.read_text(encoding="utf-8")) for path in (first, second)), key=impl_of
+    )
+    loc = {impl: count_lines(paths) for impl, paths in LOC_PATHS.items()}
+    try:
+        typer.echo(compare_markdown(*results, loc))
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
 
 
 def _langchain_answerer(

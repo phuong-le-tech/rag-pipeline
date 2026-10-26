@@ -171,9 +171,11 @@ uv run rag ask "How do I roll back a deployment?"
 | `rag ingest CORPUS_ROOT [--no-prune]` | Incremental load → chunk → embed → store |
 | `rag search QUERY [--mode dense\|keyword\|hybrid] [--rerank] [-k N] [--no-generated]` | Ranked passages, no LLM |
 | `rag ask QUESTION [-k N] [--rewrite] [--no-rerank]` | Cited answer, streamed |
+| `rag ask QUESTION --impl langchain` | Same pipeline through LangChain (LCEL); also works with `--agent` (LangGraph). Needs `uv sync --extra langchain` |
 | `rag ask QUESTION --agent [--no-rerank]` | Agent mode: the LLM decides what to search and how many passages (k 1-10) per search; each step printed; answer not streamed |
 | `rag eval [--config NAME] [--limit N]` | Retrieval metrics per configuration, split by question origin |
-| `rag eval-answers [--config NAME] [--judge-backend B] [--mode agent] [--judge-model ID] [--judge-max-tokens N] [--resume FILE]` | Faithfulness, correctness, citations, refusals (LLM judge) |
+| `rag eval-answers [--config NAME] [--impl handwritten\|langchain] [--judge-backend B] [--mode agent] [--judge-model ID] [--judge-max-tokens N] [--resume FILE]` | Faithfulness, correctness, citations, refusals (LLM judge) |
+| `rag compare A.json B.json` | Table of a hand-written and a LangChain `eval-answers` run (same mode) |
 | `rag draft-questions --n N --seed S` | LLM-drafted golden questions (resumable) |
 | `rag review-drafts` | Human review of drafts: y / e / n / q (resumable) |
 
@@ -218,6 +220,7 @@ Environment variables (or `.env` locally). Settings use the `RAG_` prefix; API k
 |---|---|---|
 | `RAG_DATABASE_URL` | `postgresql://rag:rag@localhost:5433/rag` | |
 | `OPENROUTER_API_KEY` | - | needed for answers with the default backend |
+| `RAG_IMPL` | `handwritten` | `langchain` answers through LangChain/LangGraph ([chapter 9](docs/09-langchain.md)); needs the `langchain` extra and the `openrouter` or `fake` backend |
 | `RAG_LLM_BACKEND` | `openrouter` | `anthropic` (needs `ANTHROPIC_API_KEY`), `fake` (tests) |
 | `RAG_OPENROUTER_MODEL` | - | **required** with the default backend; the API refuses to start without it. Pick one from [openrouter.ai/models?q=free](https://openrouter.ai/models?q=free): free models are withdrawn or rate-limited often, so there is no default |
 | `RAG_LLM_MODEL` | `claude-sonnet-5-5` | Anthropic backend only |
