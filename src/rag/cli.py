@@ -1,5 +1,6 @@
 import json
 import time
+from collections.abc import Callable, Iterator
 from dataclasses import asdict, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -23,6 +24,7 @@ from rag.config import Settings
 from rag.db import connect, init_db
 from rag.embed import make_embedder
 from rag.evals.answers import (
+    Answered,
     RetryingGenerator,
     agent_answerer,
     answers_markdown,
@@ -46,6 +48,7 @@ from rag.generate.generator import make_generator, make_tool_generator
 from rag.ingest.chunking import chunk_markdown
 from rag.ingest.loaders import iter_documents
 from rag.ingest.pipeline import ingest
+from rag.lc.llm import LANGCHAIN_BACKENDS, require_langchain
 from rag.retrieval.rerank import make_reranker
 from rag.retrieval.retriever import Retriever, RetrieverConfig
 from rag.retrieval.rewrite import QueryRewriter
@@ -53,6 +56,8 @@ from rag.retrieval.rewrite import QueryRewriter
 app = typer.Typer(help="RAG pipeline commands.", no_args_is_help=True)
 
 SUPPORTED_SUFFIXES = {".md", ".markdown", ".txt"}
+IMPLS = ("handwritten", "langchain")
+LC_EVAL_RETRIES = 6  # SDK backoff on 429s for LangChain eval runs (free tiers rate-limit often)
 LLM_KEY_NAMES = {"anthropic": "ANTHROPIC_API_KEY", "openrouter": "OPENROUTER_API_KEY"}
 PREVIEW_CHARS = 120
 
@@ -76,6 +81,25 @@ def llm_error_hint(exc: Exception, settings: Settings, agent: bool = False) -> s
     if isinstance(exc, anthropic.APIConnectionError | openai.APIConnectionError):
         return "Could not reach the provider: check your network connection."
     return f"Check {key} and the model name for backend '{settings.llm_backend}'."
+
+
+def _resolve_impl(impl: str | None, settings: Settings, agent: bool = False) -> str:
+    """The implementation to run, checked up front so a bad choice fails before any work."""
+    impl = impl or settings.impl
+    if impl not in IMPLS:
+        raise typer.BadParameter(f"unknown impl {impl!r}; choose from {list(IMPLS)}")
+    if impl == "langchain":
+        try:
+            require_langchain()
+        except RuntimeError as exc:
+            raise typer.BadParameter(str(exc)) from exc
+        backend = (settings.agent_backend if agent else None) or settings.llm_backend
+        if backend not in LANGCHAIN_BACKENDS:
+            raise typer.BadParameter(
+                f"impl=langchain does not support the {backend!r} backend yet; "
+                f"set RAG_LLM_BACKEND to one of {list(LANGCHAIN_BACKENDS)}"
+            )
+    return impl
 
 
 def _database_unreachable(exc: Exception) -> typer.Exit:
@@ -124,13 +148,33 @@ def _echo_search(event: ToolResultEvent, call: ToolCallEvent) -> None:
         typer.echo(f"   [{number}] {hit.heading or hit.title} - {hit.url}")
 
 
-def _run_agent_with_trace(
-    question: str, settings: Settings, retriever: Retriever, config: RetrieverConfig
-) -> AgentResult:
+def _agent_events(
+    question: str, settings: Settings, retriever: Retriever, config: RetrieverConfig, impl: str
+) -> Iterator[ToolCallEvent | ToolResultEvent | AgentResult]:
     search = SearchTool(retriever, config)
+    if impl == "langchain":
+        from rag.lc.agent import run_lc_agent
+        from rag.lc.factory import make_agent_model
+
+        result = run_lc_agent(question, make_agent_model(settings), search, agent_limits(settings))
+        yield from result.steps  # the graph returns at the end, so its trace prints afterwards
+        yield result
+    else:
+        yield from run_agent(
+            question, make_tool_generator(settings), search, agent_limits(settings)
+        )
+
+
+def _run_agent_with_trace(
+    question: str,
+    settings: Settings,
+    retriever: Retriever,
+    config: RetrieverConfig,
+    impl: str = "handwritten",
+) -> AgentResult:
     call: ToolCallEvent | None = None
     result: AgentResult | None = None
-    for event in run_agent(question, make_tool_generator(settings), search, agent_limits(settings)):
+    for event in _agent_events(question, settings, retriever, config, impl):
         if isinstance(event, AgentResult):
             result = event
         elif isinstance(event, ToolCallEvent):
@@ -167,6 +211,9 @@ def ask_cmd(
     agent: Annotated[
         bool, typer.Option(help="The LLM decides what to search; prints each step.")
     ] = False,
+    impl: Annotated[
+        str | None, typer.Option(help="handwritten | langchain (default: RAG_IMPL).")
+    ] = None,
 ) -> None:
     """Answer a question from the docs, with [n] citations to the passages used."""
     if agent and rewrite:
@@ -174,6 +221,7 @@ def ask_cmd(
             "--agent cannot be combined with --rewrite: the agent writes its own queries."
         )
     settings = Settings()
+    impl = _resolve_impl(impl, settings, agent)
     config = ask_config(k=k, rerank=rerank, generated=generated, rewrite=rewrite)
     try:
         conn = connect(settings)
@@ -188,8 +236,19 @@ def ask_cmd(
         retriever = Retriever(conn, make_embedder(settings), reranker, rewriter)
         try:
             if agent:
-                agent_result = _run_agent_with_trace(question, settings, retriever, config)
+                agent_result = _run_agent_with_trace(question, settings, retriever, config, impl)
                 answer = agent_result.answer
+            elif impl == "langchain":
+                from rag.lc.chain import LangChainGenerator, lc_answer_question
+                from rag.lc.llm import make_chat_model
+                from rag.lc.retriever import HybridRetriever
+
+                answer = lc_answer_question(
+                    question,
+                    HybridRetriever(retriever=retriever, config=config),
+                    LangChainGenerator(make_chat_model(settings)),
+                    on_text=lambda piece: typer.echo(piece, nl=False),
+                )
             else:
                 answer = answer_question(
                     question,
@@ -323,6 +382,12 @@ def eval_answers_cmd(
     ] = 8192,
     price_in: Annotated[float, typer.Option(help="USD per million input tokens.")] = 0.0,
     price_out: Annotated[float, typer.Option(help="USD per million output tokens.")] = 0.0,
+    impl: Annotated[
+        str | None,
+        typer.Option(
+            help="handwritten | langchain: who answers (default: RAG_IMPL). Judge is shared."
+        ),
+    ] = None,
 ) -> None:
     """Generate answers, grade them with an LLM judge, check citations and refusals."""
     if config not in ABLATIONS:
@@ -332,6 +397,7 @@ def eval_answers_cmd(
     if mode == "agent" and k is not None:
         raise typer.BadParameter("--k applies to pipeline mode only; the agent picks k per search")
     settings = Settings()
+    impl = _resolve_impl(impl, settings, agent=mode == "agent")
     timestamp = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     out.mkdir(parents=True, exist_ok=True)
     checkpoint = resume or out / f"{timestamp.replace(':', '-')}-answers.partial.jsonl"
@@ -365,7 +431,9 @@ def eval_answers_cmd(
         reranker = make_reranker(settings) if retriever_config.rerank else None
         retriever = Retriever(conn, make_embedder(settings), reranker)
         try:
-            if mode == "agent":
+            if impl == "langchain":
+                answerer = _langchain_answerer(settings, mode, retriever, retriever_config)
+            elif mode == "agent":
                 answerer = agent_answerer(
                     lambda: RetryingGenerator(make_tool_generator(settings)),
                     SearchTool(retriever, retriever_config),
@@ -398,6 +466,7 @@ def eval_answers_cmd(
         "corpus_ref": ref_file.read_text().strip() if ref_file.exists() else "unknown",
         "fingerprint": settings.pipeline_fingerprint(),
         "retrieval": config,
+        "impl": impl,
         "mode": mode,
         # In agent mode the model picks k per search, so the --k value is not recorded.
         "k": None if mode == "agent" else retriever_config.k,
@@ -416,6 +485,23 @@ def eval_answers_cmd(
     typer.echo(answers_markdown(report))
     path = write_answer_results(out, report, meta)
     typer.secho(f"Saved {path}", fg="green")
+
+
+def _langchain_answerer(
+    settings: Settings, mode: str, retriever: Retriever, config: RetrieverConfig
+) -> Callable[[str], Answered]:
+    from rag.lc import factory
+    from rag.lc.chain import LangChainGenerator
+    from rag.lc.llm import make_chat_model
+
+    if mode == "agent":
+        return factory.lc_agent_answerer(
+            lambda: factory.make_agent_model(settings, LC_EVAL_RETRIES),
+            SearchTool(retriever, config),
+            agent_limits(settings),
+        )
+    generator = RetryingGenerator(LangChainGenerator(make_chat_model(settings, LC_EVAL_RETRIES)))
+    return factory.lc_pipeline_answerer(retriever, generator, config)
 
 
 def _llm_label(settings: Settings, model: str | None = None) -> str:
