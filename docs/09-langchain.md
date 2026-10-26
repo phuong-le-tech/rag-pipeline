@@ -53,8 +53,35 @@ the LangChain side imports the hand-written prompt, tools and citation checks.
 
 ## Results
 
-Not run yet. The numbers go here after the first paired run, with the model, corpus commit and
-date recorded in each results file's `meta`.
+Pipeline mode, one run each on 2026-10-26, same model (`nvidia/nemotron-3-ultra-550b-a55b:free`),
+same judge (`dots-studio/dots-3-note-preview:free`), `hybrid+rerank, max 1/page`, k = 5, and the
+same half sample: the first 47 answerable and first 7 unanswerable golden questions (54 in total).
+
+| Metric | Hand-written | LangChain |
+|---|---:|---:|
+| Answer rate (answerable) | 0.872 | 0.872 |
+| False refusals | 0.128 | 0.128 |
+| Faithfulness (supported claims) | 0.940 | 0.935 |
+| Correct: yes | 0.850 | 0.846 |
+| Correct: partial | 0.125 | 0.128 |
+| Citation coverage (sentences cited) | 0.572 | 0.609 |
+| Answers with invented citations | 0.000 | 0.000 |
+| Refusal on unanswerable | 1.000 | 1.000 |
+| LLM calls per question | 1.00 | 1.00 |
+| Tokens per question | 2007 | 2009 |
+| Latency p50 (ms) | 9918 | 10693 |
+| Latency p95 (ms) | 22979 | 28878 |
+| Lines of code | 600 | 326 |
+
+The two implementations are indistinguishable on quality. Every difference is within what one more
+run of the same code would change (n = 54, single run, free model). Token use matches to within
+2 tokens per question, which confirms the prompts are identical. The latency gap is also within
+free-tier noise. The one clear difference is code size: the LangChain orchestration is about half
+the lines, but it reuses the hand-written prompt, tools and citation checks, so it is not a
+like-for-like count.
+
+Not measured: agent mode. An earlier agent attempt was discarded because the model used in the
+old hand-written run had been withdrawn, so the two sides would not have matched.
 
 ## Trade-offs
 

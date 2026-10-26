@@ -133,6 +133,28 @@ default and agent mode stays opt-in.
 Multi-part questions are not evaluated yet, so the agent's expected edge there is untested. Details and the step-limit runs in
 [docs/08-agent.md](docs/08-agent.md).
 
+### Hand-written vs LangChain
+
+The pipeline also runs through LangChain (`--impl langchain`, [chapter 9](docs/09-langchain.md)). On the same half sample (54 questions), model, judge and settings, quality, tokens and calls are indistinguishable; only the orchestration code is smaller (326 against 600 lines, not like-for-like).
+
+| Metric | Hand-written | LangChain |
+|---|---:|---:|
+| Answer rate (answerable) | 0.872 | 0.872 |
+| False refusals | 0.128 | 0.128 |
+| Faithfulness (supported claims) | 0.940 | 0.935 |
+| Correct: yes | 0.850 | 0.846 |
+| Correct: partial | 0.125 | 0.128 |
+| Citation coverage (sentences cited) | 0.572 | 0.609 |
+| Answers with invented citations | 0.000 | 0.000 |
+| Refusal on unanswerable | 1.000 | 1.000 |
+| LLM calls per question | 1.00 | 1.00 |
+| Tokens per question | 2007 | 2009 |
+| Latency p50 (ms) | 9918 | 10693 |
+| Latency p95 (ms) | 22979 | 28878 |
+| Lines of code | 600 | 326 |
+
+Pipeline mode only, one run each; agent mode is not compared yet.
+
 ## Getting started
 
 **Prerequisites**: [uv](https://docs.astral.sh/uv/), Docker, Node.js 22+, and an
