@@ -58,6 +58,8 @@ class Settings(BaseSettings):
     agent_max_steps: int = Field(default=4, gt=0, le=10)  # search_docs calls per question
     agent_timeout_s: float = Field(default=90.0, gt=0)
     agent_max_total_tokens: int = Field(default=30000, gt=0)
+    # Lets the web API offer agent mode (about 2.5 model calls per question, charged to the budget).
+    agent_enabled: bool = True
 
     def require_openrouter_model(self) -> str:
         if not self.openrouter_model:

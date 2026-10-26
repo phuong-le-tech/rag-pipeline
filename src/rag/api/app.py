@@ -16,15 +16,27 @@ from email.parser import BytesParser
 from email.policy import HTTP
 from typing import Annotated, Any, Literal
 
+import anthropic
+import openai
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field, StringConstraints
 
+from rag.agent.loop import (
+    DEFAULT_LIMITS,
+    AgentResult,
+    Limits,
+    ToolCallEvent,
+    ToolResultEvent,
+    agent_limits,
+    run_agent,
+)
+from rag.agent.tools import SearchTool
 from rag.api.guards import DailyBudget, RateLimiter
 from rag.config import Settings
 from rag.generate.answer import Answer, stream_answer
-from rag.generate.generator import Generator
+from rag.generate.generator import Generator, ToolGenerator
 from rag.ingest.upload import MAX_UPLOAD_BYTES
 from rag.lc.llm import LANGCHAIN_BACKENDS
 from rag.retrieval.retriever import RetrieverConfig
@@ -49,6 +61,7 @@ class AskRequest(BaseModel):
     max_one_per_page: bool = True
     collection: str | None = Field(default=None, pattern=COLLECTION_ID)  # None = Kubernetes docs
     impl: Literal["handwritten", "langchain"] = "handwritten"
+    agent: bool = False  # the model decides what to search; several model calls per question
 
 
 @dataclass(frozen=True)
@@ -60,9 +73,16 @@ class Services:
     index_upload: Callable[[str, str, str], Iterator[tuple[str, dict]]] | None = None
     # Builds the LangChain generator on first use; None when the extra or backend is unavailable.
     lc_generator: Callable[[], Generator] | None = None
+    # Agent mode: a fresh tool-calling LLM (and LangChain chat model) per ask; None = unavailable.
+    tool_generator: Callable[[], ToolGenerator] | None = None
+    lc_agent_model: Callable[[], Any] | None = None
+    agent_limits: Limits = DEFAULT_LIMITS
 
     def impls(self) -> list[str]:
         return ["handwritten", "langchain"] if self.lc_generator else ["handwritten"]
+
+    def agent_available(self) -> bool:
+        return self.tool_generator is not None
 
 
 def hit_json(h: Hit) -> dict:
@@ -85,7 +105,7 @@ def default_services(settings: Settings) -> Services:  # pragma: no cover - need
 
     from rag.db import connect
     from rag.embed import make_embedder
-    from rag.generate.generator import make_generator
+    from rag.generate.generator import make_generator, make_tool_generator
     from rag.ingest.upload import ingest_upload, purge_expired
     from rag.retrieval.rerank import make_reranker
     from rag.retrieval.retriever import Retriever
@@ -117,7 +137,7 @@ def default_services(settings: Settings) -> Services:  # pragma: no cover - need
             purge_expired(conn, settings.upload_ttl_hours)  # lazy TTL: no scheduler needed
             yield from ingest_upload(conn, embedder, settings, collection, filename, text)
 
-    lc_generator = None
+    lc_generator = lc_agent_model = None
     if importlib.util.find_spec("langchain_core") and settings.llm_backend in LANGCHAIN_BACKENDS:
 
         @functools.cache
@@ -127,7 +147,27 @@ def default_services(settings: Settings) -> Services:  # pragma: no cover - need
 
             return LangChainGenerator(make_chat_model(settings))
 
-    return Services(retriever_factory, make_generator(settings), stats, index_upload, lc_generator)
+        def lc_agent_model():
+            from rag.lc.factory import make_agent_model
+
+            return make_agent_model(settings)
+
+    tool_generator = None
+    if settings.agent_enabled:
+
+        def tool_generator() -> ToolGenerator:
+            return make_tool_generator(settings)
+
+    return Services(
+        retriever_factory,
+        make_generator(settings),
+        stats,
+        index_upload,
+        lc_generator,
+        tool_generator,
+        lc_agent_model,
+        agent_limits(settings),
+    )
 
 
 def retrieve(
@@ -207,6 +247,109 @@ def run_ask(
     finally:
         release()
         log.info(json.dumps({"id": rid, "impl": impl, "status": status, "ms": timings}))
+
+
+def _agent_events(
+    impl: str, question: str, search: SearchTool, services: Services, budget: DailyBudget
+) -> Iterator[ToolCallEvent | ToolResultEvent | AgentResult]:
+    if impl == "langchain":
+        from rag.lc.agent import run_lc_agent
+
+        # The graph returns at the end, so its steps are replayed after the run.
+        result = run_lc_agent(
+            question,
+            services.lc_agent_model(),
+            search,
+            services.agent_limits,
+            take_budget=budget.take,
+        )
+        yield from result.steps
+        yield result
+    else:
+        yield from run_agent(
+            question, services.tool_generator(), search, services.agent_limits, budget.take
+        )
+
+
+def run_ask_agent(
+    question: str,
+    config: RetrieverConfig,
+    services: Services,
+    budget: DailyBudget,
+    release: Callable[[], None],
+    impl: str = "handwritten",
+) -> Iterator[str]:
+    """One agent ask as SSE: stages and a step per search, then context and done or error.
+
+    The answer is not streamed token by token. Every model call is charged to the daily budget.
+    """
+    rid, start = uuid.uuid4().hex[:8], time.perf_counter()
+    timings: dict[str, int] = {}
+    status, result = "ok", None
+    try:
+        calls: dict[int, ToolCallEvent] = {}
+        with services.retriever_factory() as retriever:
+            search = SearchTool(retriever, config)
+            for event in _agent_events(impl, question, search, services, budget):
+                if isinstance(event, ToolCallEvent):
+                    calls[event.step] = event
+                elif isinstance(event, ToolResultEvent):
+                    for name, hits, ms in event.stages:
+                        timings[name] = timings.get(name, 0) + round(ms)
+                        hits_json = [hit_json(h) for h in hits][:STAGE_HITS]
+                        yield sse(
+                            "stage",
+                            {"name": name, "ms": round(ms), "hits": hits_json, "step": event.step},
+                        )
+                    k = ((calls.get(event.step) or event).arguments or {}).get("k")
+                    yield sse(
+                        "step",
+                        {
+                            "step": event.step,
+                            "query": event.query,
+                            "k": k,
+                            "numbers": list(event.numbers),
+                            "duplicate": event.duplicate,
+                            "error": event.error,
+                            "ms": round(event.ms),
+                        },
+                    )
+                else:
+                    result = event
+        # Every passage the agent saw, in citation-number order: hits[n - 1] is [n].
+        yield sse("context", {"hits": [hit_json(h) for h in result.answer.retrieved]})
+        if result.stopped == "daily_limit":
+            status = "daily_limit"
+            yield sse("error", {"code": "daily_limit", "message": DAILY_LIMIT_MSG})
+            return
+        answer = result.answer
+        yield sse(
+            "done",
+            {
+                "text": answer.text,
+                "refused": answer.refused,
+                "sources": [{"n": s.number, "id": s.hit.chunk_id} for s in answer.sources],
+                "invalid": list(answer.invalid_citations),
+                "impl": impl,
+                "agent": True,
+                "searches": result.tool_calls,
+                "llm_calls": result.llm_calls,
+                "stopped": result.stopped,
+                "ms": round((time.perf_counter() - start) * 1000),
+            },
+        )
+    except Exception as exc:
+        llm = isinstance(exc, openai.OpenAIError | anthropic.AnthropicError)
+        status = "llm_failed" if llm else "failed"
+        log.exception("agent ask %s failed", rid)
+        message = LLM_FAILED_MSG if llm else SERVER_FAILED_MSG
+        yield sse("error", {"code": status, "message": message})
+    finally:
+        release()
+        line = {"id": rid, "impl": impl, "agent": True, "status": status, "ms": timings}
+        if result is not None:
+            line.update(llm_calls=result.llm_calls, searches=result.tool_calls)
+        log.info(json.dumps(line))
 
 
 def run_upload(
@@ -333,12 +476,15 @@ def create_app(settings: Settings, services: Services | None = None) -> FastAPI:
             "llm_model": llm_model,
             "embedding_model": settings.embedding_model_name(),
             "impls": request.app.state.services.impls(),
+            "agent": request.app.state.services.agent_available(),
         }
 
     @app.post("/api/ask")
     def ask(body: AskRequest, request: Request):
         if body.impl not in request.app.state.services.impls():
             return JSONResponse({"error": "impl_unavailable"}, status_code=422)
+        if body.agent and not request.app.state.services.agent_available():
+            return JSONResponse({"error": "agent_unavailable"}, status_code=422)
         wait = request.app.state.limiter.check(client_key(request))
         if wait:
             return JSONResponse(
@@ -355,7 +501,8 @@ def create_app(settings: Settings, services: Services | None = None) -> FastAPI:
         if not body.max_one_per_page:
             config = replace(config, max_per_source=None)
         release = slot_releaser(slots)
-        stream = run_ask(
+        run = run_ask_agent if body.agent else run_ask
+        stream = run(
             body.question,
             config,
             request.app.state.services,

@@ -49,7 +49,7 @@ class StagedFake:
         return [HIT]
 
 
-def make_client(gen=None, lc_generator=None, **overrides):
+def make_client(gen=None, lc_generator=None, tool_generator=None, lc_agent_model=None, **overrides):
     @contextmanager
     def factory():
         yield StagedFake()
@@ -60,6 +60,8 @@ def make_client(gen=None, lc_generator=None, **overrides):
         gen or FakeGenerator("Use rollout undo [1]."),
         lambda: {"docs": 1, "chunks": 1},
         lc_generator=lc_generator,
+        tool_generator=tool_generator,
+        lc_agent_model=lc_agent_model,
     )
     return TestClient(create_app(settings, services))
 
@@ -406,3 +408,126 @@ def test_ask_log_line_names_the_implementation(impl, caplog):
     events(client.post("/api/ask", json={"question": "roll back?", "impl": impl}))
     logged = [json.loads(r.message) for r in caplog.records if r.name == "rag.api"]
     assert logged[-1]["impl"] == impl and logged[-1]["status"] == "ok"
+
+
+# ---- agent mode ----
+
+
+def scripted_agent(*extra_turns):
+    from rag.generate.generator import ScriptedToolGenerator, ToolCall, Turn
+
+    turns = [
+        Turn("", (ToolCall("c1", "search_docs", '{"query": "rollback"}'),)),
+        Turn("Use rollout undo [1]."),
+        *extra_turns,
+    ]
+    return lambda: ScriptedToolGenerator(turns)
+
+
+def lc_scripted_agent():
+    from langchain_core.messages import AIMessage
+
+    from rag.lc.llm import fake_tool_chat_model
+
+    call = {"name": "search_docs", "args": {"query": "rollback"}, "id": "c1"}
+    messages = [
+        AIMessage(content="", tool_calls=[call]),
+        AIMessage(content="Use rollout undo [1]."),
+    ]
+    return lambda: fake_tool_chat_model(messages)
+
+
+def ask_agent(client, **body):
+    return client.post("/api/ask", json={"question": "roll back?", "agent": True, **body})
+
+
+def test_agent_streams_stages_steps_context_and_done():
+    ev = events(ask_agent(make_client(tool_generator=scripted_agent())))
+    names = [e for e, _ in ev]
+    assert names == ["stage"] * 4 + ["step", "context", "done"]
+    step = dict(ev)["step"]
+    assert (step["step"], step["query"], step["numbers"], step["duplicate"]) == (
+        1,
+        "rollback",
+        [1],
+        False,
+    )
+    done = ev[-1][1]
+    assert done["text"] == "Use rollout undo [1]." and done["sources"] == [{"n": 1, "id": 7}]
+    assert (done["agent"], done["impl"], done["searches"], done["llm_calls"]) == (
+        True,
+        "handwritten",
+        1,
+        2,
+    )
+    assert dict(ev)["context"]["hits"][0]["id"] == 7
+
+
+def test_agent_with_langchain_streams_the_same_events():
+    client = make_client(
+        lc_generator=lambda: None,
+        lc_agent_model=lc_scripted_agent(),
+        tool_generator=scripted_agent(),
+    )
+    ev = events(ask_agent(client, impl="langchain"))
+    assert [e for e, _ in ev] == ["stage"] * 4 + ["step", "context", "done"]
+    assert ev[-1][1]["impl"] == "langchain" and ev[-1][1]["searches"] == 1
+
+
+def test_agent_unavailable_is_a_clear_422_and_takes_no_slot():
+    c = make_client(max_concurrent_asks=1)
+    r = ask_agent(c)
+    assert r.status_code == 422 and r.json() == {"error": "agent_unavailable"}
+    assert c.post("/api/ask", json={"question": "a"}).status_code == 200
+
+
+def test_agent_charges_the_daily_budget_per_model_call():
+    c = make_client(tool_generator=scripted_agent(), daily_llm_limit=2)
+    assert events(ask_agent(c))[-1][0] == "done"  # two model calls used the whole budget
+    assert events(ask_agent(c))[-1][1]["code"] == "daily_limit"
+
+
+def test_agent_budget_running_out_mid_run_keeps_the_search_steps():
+    c = make_client(tool_generator=scripted_agent(), daily_llm_limit=1)
+    ev = events(ask_agent(c))
+    names = [e for e, _ in ev]
+    assert "step" in names and ev[-1][0] == "error" and ev[-1][1]["code"] == "daily_limit"
+
+
+def test_agent_llm_failure_ends_with_llm_failed():
+    import httpx
+    import openai
+
+    class Boom:
+        def chat(self, system, messages, tools, allow_tools=True):
+            raise openai.APIConnectionError(request=httpx.Request("POST", "https://x"))
+
+    ev = events(ask_agent(make_client(tool_generator=lambda: Boom())))
+    assert ev[-1][0] == "error" and ev[-1][1]["code"] == "llm_failed"
+
+
+def test_agent_server_failure_ends_with_failed():
+    class Boom:
+        def chat(self, system, messages, tools, allow_tools=True):
+            raise RuntimeError("bug")
+
+    ev = events(ask_agent(make_client(tool_generator=lambda: Boom())))
+    assert ev[-1][0] == "error" and ev[-1][1]["code"] == "failed"
+
+
+def test_collection_reports_whether_agent_mode_is_available():
+    assert make_client().get("/api/collection").json()["agent"] is False
+    assert make_client(tool_generator=scripted_agent()).get("/api/collection").json()["agent"]
+
+
+def test_agent_log_line_has_agent_and_counts(caplog):
+    import logging
+
+    caplog.set_level(logging.INFO, logger="rag.api")
+    events(ask_agent(make_client(tool_generator=scripted_agent())))
+    logged = [json.loads(r.message) for r in caplog.records if r.name == "rag.api"][-1]
+    assert logged["agent"] is True and logged["llm_calls"] == 2 and logged["status"] == "ok"
+
+
+def test_agent_mode_is_on_by_default_in_settings():
+    assert Settings(_env_file=None).agent_enabled is True
