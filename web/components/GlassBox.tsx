@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useReducer, useRef } from "react";
-import { type ApiHit, ApiError, askStream, effectiveImpl, getCollection, ingestUpdate, type SSE, splitCitations, toChunk, uploadStream } from "@/lib/api.ts";
+import { type ApiHit, ApiError, askStream, effectiveAgent, effectiveImpl, getCollection, ingestUpdate, type SSE, splitCitations, toChunk, uploadStream } from "@/lib/api.ts";
 import type { Collection, Retrieval, Scored, StageState } from "@/lib/types.ts";
 import { Icon } from "./Icons";
 import { type Cmd, CitePopover, CollMenu, Palette, paletteItems, SettingsMenu } from "./Overlays";
@@ -52,6 +52,7 @@ export default function GlassBox() {
     render();
   };
   const toggleImpl = () => { S.set.impl = S.set.impl === "langchain" ? "handwritten" : "langchain"; announce("Answering with " + (S.set.impl === "langchain" ? "LangChain" : "the hand-written pipeline")); render(); };
+  const toggleAgent = () => { S.set.agent = !S.set.agent; announce("Agent mode " + (S.set.agent ? "on" : "off")); render(); };
   const toggleRerank = () => { S.set.rerank = !S.set.rerank; announce("Rerank " + (S.set.rerank ? "on" : "off")); render(); };
 
   /* ---------- collection: the Kubernetes index, built ahead of time ---------- */
@@ -166,7 +167,8 @@ export default function GlassBox() {
     const my = ++runId.current;
     const live = () => my === runId.current;
     S.msgs.push({ role: "u", text });
-    const m: Ans = { role: "a", status: "streaming", parts: [], cites: [] };
+    const agent = effectiveAgent(S.info, S.set.agent);
+    const m: Ans = { role: "a", status: "streaming", parts: [], cites: [], agent, steps: [] };
     S.msgs.push(m);
     const R: Retrieval = { dense: [], kw: [], fusion: [], rerank: [], ctx: [], k: S.set.k };
     S.chunks = new Map();
@@ -190,7 +192,7 @@ export default function GlassBox() {
       if (!live()) return;
       const q = S.q!;
       if (event === "stage") {
-        ms[data.name] = data.ms;
+        ms[data.name] = (ms[data.name] || 0) + data.ms; // an agent searches several times
         const list = remember(data.hits);
         if (data.name === "dense") { R.dense = list; setQ("dense", "done", data.ms); }
         else if (data.name === "keyword") { R.kw = list; setQ("keyword", "done", data.ms); setQ("fusion", "running"); }
@@ -203,6 +205,9 @@ export default function GlassBox() {
           R.rerank = list.map((x, i) => ({ c: x.c, s: 1 / (1 + Math.exp(-x.s)), from: R.fusion.find((f) => f.c.id === x.c.id)?.rank ?? i + 1, to: i + 1, tag: "" }));
           setQ("rerank", "done", data.ms);
         }
+      } else if (event === "step") {
+        m.steps!.push({ step: data.step, query: data.query, k: data.k, count: data.numbers.length, duplicate: data.duplicate, error: data.error });
+        render();
       } else if (event === "context") {
         R.ctx = remember(data.hits).map((x) => x.c);
         const ctxIds = new Set(R.ctx.map((c) => c.id));
@@ -222,6 +227,7 @@ export default function GlassBox() {
         m.status = data.refused ? "refusal" : "done";
         m.ms = data.ms;
         m.impl = data.impl;
+        m.searches = data.searches;
         q.tout = q.tok;
         const retrieve = (ms.dense || 0) + (ms.keyword || 0) + (ms.fusion || 0);
         const rerank = ms.rerank || 0;
@@ -236,7 +242,7 @@ export default function GlassBox() {
     };
 
     try {
-      await askStream({ question: text, k: S.set.k, rerank: S.set.rerank, max_one_per_page: S.set.one, impl: effectiveImpl(S.info, S.set.impl), collection: S.col!.id === "k8s" ? undefined : S.col!.id }, onEvent);
+      await askStream({ question: text, k: S.set.k, rerank: S.set.rerank, max_one_per_page: S.set.one, impl: effectiveImpl(S.info, S.set.impl), agent: agent || undefined, collection: S.col!.id === "k8s" ? undefined : S.col!.id }, onEvent);
       if (live() && m.status === "streaming") { m.status = "error"; m.message = UNAVAILABLE; }
     } catch (e) {
       if (!live()) return;
@@ -246,6 +252,8 @@ export default function GlassBox() {
         m.message = "Too many questions in a minute.";
       } else if (e instanceof ApiError && e.code === "busy") {
         m.message = "Two answers are already running. Retry in a few seconds.";
+      } else if (e instanceof ApiError && (e.code === "agent_unavailable" || e.code === "impl_unavailable")) {
+        m.message = "That mode is not available on this server.";
       } else if (e instanceof ApiError && e.status === 422) {
         m.message = "Questions must be 1 to 500 characters.";
       } else {
@@ -296,6 +304,7 @@ export default function GlassBox() {
     { t: "Toggle rerank", s: S.set.rerank ? "on" : "off", k: "R", run: toggleRerank },
     { t: "Toggle max 1 chunk per page", s: S.set.one ? "on" : "off", run: () => { S.set.one = !S.set.one; render(); } },
     ...(S.info?.impls?.includes("langchain") ? [{ t: "Toggle LangChain", s: S.set.impl === "langchain" ? "on" : "off", run: toggleImpl }] : []),
+    ...(S.info?.agent ? [{ t: "Toggle agent mode", s: S.set.agent ? "on" : "off", run: toggleAgent }] : []),
     { t: "Ask a question", k: "/", run: () => refs.input.current?.focus() },
     { t: "Toggle theme", k: "T", run: toggleTheme },
     { t: "Open settings", k: ",", run: () => toggleMenu("settings") },

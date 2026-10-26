@@ -1,5 +1,6 @@
 "use client";
 import { type ReactNode, useEffect, useRef, useState } from "react";
+import { stepLabel } from "@/lib/api.ts";
 import type { Chunk, StageState } from "@/lib/types.ts";
 import { Icon, Md } from "./Icons";
 import { cx, fmtMs, type IngKey, type Msg, type QKey, type Store, STL } from "./store";
@@ -386,7 +387,12 @@ const waitText = (retryAt?: number) => {
 function Message({ m, S, A, h }: P & { m: Msg }) {
   if (m.role === "u") return <article className="msg"><div className="who">You</div><p className="qt">{m.text}</p></article>;
   const Hd = ({ r }: { r: ReactNode }) => <div className="who"><span>Answer</span><span className="grow" />{r}</div>;
-  const took = (text: string) => <span className="mono">{m.impl === "langchain" && "LangChain · "}{text}</span>;
+  const took = (text: string) => <span className="mono">{m.agent && "Agent · "}{m.impl === "langchain" && "LangChain · "}{text}</span>;
+  const steps = m.steps?.length ? (
+    <ol className="steps" aria-label="Searches the agent ran">
+      {m.steps.map((s) => <li key={s.step} className={cx("mono", (s.error || s.duplicate) && "dim")}>{stepLabel(s)}</li>)}
+    </ol>
+  ) : m.agent && m.status === "streaming" ? <p className="steps-wait">The agent is deciding what to search…</p> : null;
   const citeBtn = (id: string, n: number, key?: string | number) => (
     <button key={key} className={cx("cite", h(id))} type="button" data-chunk={id} data-n={n} aria-label={`Citation ${n}`} onClick={(e) => A.pin(e.currentTarget)}>{n}</button>
   );
@@ -394,6 +400,7 @@ function Message({ m, S, A, h }: P & { m: Msg }) {
     return (
       <article className="msg">
         <Hd r={took(fmtMs(m.ms || 0))} />
+        {steps}
         <div className="refusal" role="status">
           <div className="rl"><Icon name="ban" />Refused</div>
           <p className="rt">I don&apos;t know based on the provided documentation.</p>
@@ -417,6 +424,7 @@ function Message({ m, S, A, h }: P & { m: Msg }) {
   return (
     <article className="msg">
       <Hd r={took(done ? fmtMs(m.ms || 0) : "streaming")} />
+      {steps}
       <p className="ans">
         {m.parts.map((p, i) => (p.t === "t" ? <Md key={i} text={p.v} /> : citeBtn(p.id, p.n, i)))}
         {!done && <span className="caret" />}

@@ -21,7 +21,10 @@ export type Collection = {
 };
 
 export type Impl = "handwritten" | "langchain";
-export type Settings = { k: number; rerank: boolean; one: boolean; impl: Impl };
+export type Settings = { k: number; rerank: boolean; one: boolean; impl: Impl; agent: boolean };
+
+// One search the agent ran, from the API's `step` event.
+export type Step = { step: number; query: string; k: number | null; count: number; duplicate: boolean; error: string | null };
 
 export type Scored = { c: Chunk; s: number };
 export type Fused = { c: Chunk; d: number | null; k: number | null; rrf: number; rank: number; s: number; tag: string };

@@ -97,6 +97,12 @@ export function SettingsMenu({ S, anchor, onChange }: MenuProps & { onChange: ()
       </div>
       <Sw k="rerank" label="Rerank" hint="Cross-encoder reorders fused passages · R" />
       <Sw k="one" label="Max 1 chunk per page" hint="Drop repeat chunks from the same page" />
+      {S.info?.agent && (
+        <div className="od-row setrow">
+          <div className="od-field od-fill"><span className="sl">Agent mode</span><span className="sh">The model decides what to search, up to 4 times. Slower; the answer arrives at the end</span></div>
+          <button className="switch od-fixed" type="button" role="switch" aria-checked={set.agent} aria-label="Agent mode" onClick={() => { set.agent = !set.agent; onChange(); }}><i /></button>
+        </div>
+      )}
       {S.info?.impls?.includes("langchain") && (
         <div className="od-row setrow">
           <div className="od-field od-fill"><span className="sl">LangChain</span><span className="sh">Answer with the LangChain pipeline instead of the hand-written one</span></div>
