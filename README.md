@@ -289,31 +289,56 @@ The API and Postgres run on [Railway](https://railway.com), the UI on [Vercel](h
 Expect about $5/month for Railway; Vercel's free tier is enough. Keys are set in each provider's
 dashboard, never in the repo.
 
-1. **Postgres**: create a Railway project and add Postgres from the `pgvector/pgvector:pg17` image
-   (Railway's pgvector template). Copy its public connection URL.
+1. **Postgres**: create a Railway project and add a pgvector Postgres from a template (the one
+   used for the reference deployment runs the official `pgvector/pgvector` image, `pg18` at the
+   time of writing; an index dumped from a local PG17 restores into it fine). Its template
+   enables a public TCP proxy: copy the public connection URL from its `DATABASE_URL` variable.
 2. **Publish the index** from your machine, with the local database running:
    ```bash
    scripts/publish_index.sh "<public DATABASE_URL>"   # prints 1,652 docs / 17,730 chunks
    ```
    The index is copied with `pg_dump` (~15 s) instead of re-embedded (35-60 min).
 3. **API**: add a Railway service from this repo (it uses [`railway.json`](railway.json) and the
-   [`Dockerfile`](Dockerfile)). Set `RAG_DATABASE_URL=${{Postgres.DATABASE_URL}}`,
-   `OPENROUTER_API_KEY`, `RAG_OPENROUTER_MODEL`, `RAG_CORS_ORIGINS=https://<your-vercel-domain>` and
-   `RAG_EMBEDDING_THREADS=4`. Give it ≥ 2 vCPU and 2 GB RAM (rerank takes ~1.5 s at 4 threads,
-   ~4 s at 2) and keep **one replica** (the guards live in memory). Generate a public domain.
-   Railway waits for `/ready` before routing traffic.
+   [`Dockerfile`](Dockerfile)). Set:
+   - `RAG_DATABASE_URL=${{<postgres service name>.DATABASE_URL_PRIVATE}}` (the private network
+     address, so no password is copied into the variable),
+   - `OPENROUTER_API_KEY`: only the key itself, with no quotes, spaces, line breaks or `Bearer`,
+   - `RAG_OPENROUTER_MODEL`: a model that is still offered, since free ones get withdrawn,
+   - `RAG_CORS_ORIGINS=https://<your-vercel-domain>`: exactly the UI's origin, no trailing slash,
+   - `RAG_EMBEDDING_THREADS=4`.
+
+   Give it ≥ 2 vCPU and 2 GB RAM (rerank takes ~1.5 s at 4 threads, ~4 s at 2) and keep **one
+   replica** (the guards live in memory). Generate a public domain whose target port is **8080**:
+   Railway injects `PORT=8080` and the container listens on it, so a domain aimed at 8000 returns
+   a 502. Railway waits for `/ready` before routing traffic.
 4. **UI**: import the repo in Vercel with root directory `web`, and set `NEXT_PUBLIC_API_URL`,
-   `NEXT_PUBLIC_PUBLISHER_NAME` and `NEXT_PUBLIC_CONTACT_EMAIL`.
+   `NEXT_PUBLIC_PUBLISHER_NAME` and `NEXT_PUBLIC_CONTACT_EMAIL`. The production build fails without
+   all three (the legal pages must name a publisher and contact). The privacy page reads the
+   model name from the API, so the model is only configured on Railway.
 5. **LangChain in production** needs nothing extra: the [`Dockerfile`](Dockerfile) installs the
    `langchain` extra, and the UI shows its switch when `/api/collection` lists `langchain` (it is
    hidden with `RAG_LLM_BACKEND=anthropic`, which LangChain does not support yet). LangChain
    answers share the same rate limit, daily budget and concurrency cap. Do not set
    `LANGSMITH_*` or `LANGCHAIN_*` variables: they would turn on tracing to a third party.
    Agent mode (a Settings switch) is also on by default: it takes about 2.5 model calls per
-   question, each charged to `RAG_DAILY_LLM_LIMIT`. Set `RAG_AGENT_ENABLED=false` to turn it off.
-6. **Check**: `curl https://<api-domain>/ready` returns the chunk count; ask a question on the
-   site; ask 11 questions within a minute and the 11th is rate-limited; from another network
+   question, each charged to `RAG_DAILY_LLM_LIMIT`. Set `RAG_AGENT_ENABLED=false` to turn it off
+   (the reference deployment launched with it off).
+6. **Check**: `curl https://<api-domain>/ready` returns the chunk count and
+   `/api/collection` lists the offered `impls` and whether `agent` mode is on; ask a question on
+   the site; ask 11 questions within a minute and the 11th is rate-limited; from another network
    (a phone on mobile data) you can still ask, which confirms the limiter sees real client IPs.
+
+If something fails, the API's runtime log usually says why:
+
+| Symptom | Likely cause |
+|---|---|
+| 502 "Application failed to respond" | the public domain targets the wrong port (use 8080) |
+| `/ready` says `db_unreachable`, log has `relation "documents" does not exist` | the index was not published (step 2) |
+| Answers fail with "Missing credentials" in the log | `OPENROUTER_API_KEY` is empty |
+| Answers fail with a 401 "Missing Authentication header" | the key value is wrong (check for stray characters) |
+| Answers fail with a 404 from the model provider | `RAG_OPENROUTER_MODEL` was withdrawn: pick another |
+| Browser console shows a CORS error | `RAG_CORS_ORIGINS` does not match the UI's origin exactly |
+| A change has no effect yet | variable changes redeploy the service, and an image rebuild takes several minutes |
 
 ## Security and privacy
 
