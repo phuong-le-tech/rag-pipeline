@@ -35,8 +35,11 @@ export default async function Privacy() {
         not your IP address. Your IP address is kept in memory for about a minute to limit abuse
         (10 questions per minute), then discarded. The hosting providers below keep their own
         standard access logs (which include IP addresses) under their policies, and the model
-        provider may log prompts. A Markdown or text file you upload is stored, under a random
-        collection id, for up to 24 hours and then deleted; it is never written to our logs.
+        provider may log prompts. Markdown, text or PDF files you upload are stored, under a random
+        collection id, each for up to 24 hours and then deleted; they are never written to our logs. To answer a
+        question about them, the most relevant passages are sent to the model provider above, which
+        may log them, so do not upload confidential files. Deleted files can remain in the hosting
+        provider's database backups until those backups expire.
       </p>
 
       <h2>Legal basis</h2>

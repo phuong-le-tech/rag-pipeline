@@ -215,3 +215,22 @@ def test_upload_over_chunk_limit_is_rejected_before_embedding():
 
     with pytest.raises(ValueError, match="chunks"):
         list(events)
+
+
+@pytest.mark.integration
+def test_upload_adds_files_to_one_collection_and_caps_it(conn, monkeypatch):
+    from rag.config import Settings
+    from rag.ingest import upload
+
+    settings = Settings(_env_file=None, embedding_backend="fake", embedding_dim=DIM)
+    col = "m" * 32
+
+    def add(name):
+        return list(upload.ingest_upload(conn, FakeEmbedder(DIM), settings, col, name, "# T\n\nx"))
+
+    add("a.md")
+    assert add("b.md")[-1] == ("done", {"collection": col, "docs": 2, "chunks": 2})
+    assert add("b.md")[-1][1]["docs"] == 2  # same name replaces, not appends
+    monkeypatch.setattr(upload, "MAX_COLLECTION_DOCS", 2)
+    with pytest.raises(ValueError, match="at most 2 documents"):
+        add("c.md")

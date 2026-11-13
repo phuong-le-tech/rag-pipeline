@@ -10,12 +10,14 @@ import { freshIng, type Ing, type Msg, newStore, type QKey, type Store } from ".
 type Ans = Extract<Msg, { role: "a" }>;
 
 const UNAVAILABLE = "Service unavailable, try again later.";
+const BUSY_RETRY_MS = 2000;
 
 const uploadError = (e: unknown) => {
   const status = e instanceof ApiError ? e.status : 0;
   if (status === 413) return "That file is over 1 MB. Split it or paste a shorter text.";
-  if (status === 415) return "Only Markdown (.md) and plain text (.txt) files are supported.";
-  if (status === 422) return "The file must be UTF-8 text with something in it.";
+  if (status === 415) return "Only Markdown (.md), plain text (.txt) and PDF files are supported.";
+  if (status === 404) return "Your documents expired after 24 hours. Add a file to start a new collection.";
+  if (status === 422) return "The file must be UTF-8 text or a PDF with selectable text.";
   if (status === 429) return `Too many requests in a minute. Retry in ${(e as ApiError).retryAfter || 60} s.`;
   if (status === 503) return "The server is busy. Retry in a few seconds.";
   return UNAVAILABLE;
@@ -82,7 +84,7 @@ export default function GlassBox() {
     render();
   }
 
-  /* ---------- upload: a visitor's own document, kept in memory only ---------- */
+  /* ---------- upload: the visitor's own documents, one collection that files are added to ---------- */
   const resetChat = () => { runId.current++; S.msgs = []; S.q = null; S.stats = null; S.chunks = new Map(); S.chunkOpen = false; S.busy = false; };
 
   async function upload(input: File | string): Promise<boolean> {
@@ -110,21 +112,30 @@ export default function GlassBox() {
         if (e.data.previews) previews = e.data.previews.map((p: { heading: string; content: string }, i: number) => ({ id: `preview-${i}`, page: "", url: "", path: p.heading ? p.heading.split(" > ") : [name], text: p.content, chars: p.content.length }));
       } else if (e.event === "done") {
         ok = true;
-        const col: Collection = { id: e.data.collection, name, chunks: previews, outline: [], total: e.data.chunks, docs: e.data.docs };
+        // `docs` and `chunks` are collection totals; previews are from the file just added.
+        const col: Collection = { id: e.data.collection, name: e.data.docs > 1 ? "Your documents" : name, chunks: previews, outline: [], total: e.data.chunks, docs: e.data.docs };
         S.up = { col, ing: { ...ing } };
         S.col = col;
         S.chunkOpen = previews.length > 0;
         S.phase = "ready";
-        announce(`${name} indexed in ${e.data.chunks} chunks. You can ask a question.`);
+        announce(`${name} added. Your documents: ${e.data.docs} files, ${e.data.chunks} chunks. You can ask a question.`);
       } else if (e.event === "error") {
         S.srcError = e.data.message;
       }
       render();
     };
     try {
-      await uploadStream(input, onEvent);
+      const send = () => uploadStream(input, onEvent, undefined, S.up?.col.id);
+      // Busy (503) is refused before anything is stored, so one retry is safe: in a batch,
+      // someone else's question holding a slot should not stop the visitor's files.
+      await send().catch(async (e) => {
+        if (!(e instanceof ApiError && e.status === 503)) throw e;
+        await new Promise((r) => setTimeout(r, BUSY_RETRY_MS));
+        return send();
+      });
     } catch (e) {
       S.srcError = uploadError(e);
+      if (e instanceof ApiError && e.status === 404) S.up = null; // expired: the next file starts afresh
     }
     if (!ok) {
       S.srcError ||= UNAVAILABLE;

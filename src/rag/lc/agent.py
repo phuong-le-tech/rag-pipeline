@@ -34,20 +34,25 @@ from rag.agent.loop import (
     _run_call,
     _State,
 )
-from rag.agent.prompt import AGENT_SYSTEM, FORCE_ANSWER
-from rag.agent.tools import SEARCH_DOCS, SearchResult
+from rag.agent.prompt import AGENT_SYSTEM, FORCE_ANSWER, GENERIC_AGENT_SYSTEM
+from rag.agent.tools import GENERIC_SEARCH_DOCS, SEARCH_DOCS, SearchResult
 from rag.generate.answer import finish_answer
 from rag.generate.generator import ToolCall
 from rag.generate.prompt import REFUSAL
 
-SEARCH_TOOL = {
-    "type": "function",
-    "function": {
-        "name": SEARCH_DOCS["name"],
-        "description": SEARCH_DOCS["description"],
-        "parameters": SEARCH_DOCS["input_schema"],
-    },
-}
+
+def _openai_tool(spec: dict) -> dict:
+    return {
+        "type": "function",
+        "function": {
+            "name": spec["name"],
+            "description": spec["description"],
+            "parameters": spec["input_schema"],
+        },
+    }
+
+
+SEARCH_TOOL = _openai_tool(SEARCH_DOCS)
 GRAPH_STEPS_PER_SEARCH = 3  # agent + tools + gate nodes per tool round trip
 
 
@@ -59,14 +64,16 @@ def run_lc_agent(
     clock: Callable[[], float] = time.monotonic,
     retry: Callable[[Callable[[], Any]], Any] = lambda call: call(),  # e.g. rate-limit backoff
     take_budget: Callable[[], bool] = lambda: True,  # called before every model call
+    generic: bool = False,  # uploaded collection: topic-neutral prompt and tool description
 ) -> AgentResult:
     st = _State(messages=[])  # the graph state holds the transcript; _State keeps the counters
     start = clock()
     outcome: dict[str, Any] = {}
-    with_tools = model.bind_tools([SEARCH_TOOL])
+    system = GENERIC_AGENT_SYSTEM if generic else AGENT_SYSTEM
+    with_tools = model.bind_tools([_openai_tool(GENERIC_SEARCH_DOCS) if generic else SEARCH_TOOL])
 
     def agent(state: MessagesState) -> dict:
-        ai = retry(lambda: with_tools.invoke([SystemMessage(AGENT_SYSTEM), *state["messages"]]))
+        ai = retry(lambda: with_tools.invoke([SystemMessage(system), *state["messages"]]))
         _count(st, ai)
         return {"messages": [ai]}
 
@@ -128,7 +135,7 @@ def run_lc_agent(
         no_tools = with_tools.bind(tool_choice="none")
         ai = retry(
             lambda: no_tools.invoke(
-                [SystemMessage(AGENT_SYSTEM), *state["messages"], HumanMessage(FORCE_ANSWER)]
+                [SystemMessage(system), *state["messages"], HumanMessage(FORCE_ANSWER)]
             )
         )
         _count(st, ai)

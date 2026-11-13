@@ -20,6 +20,7 @@ dependencies = [
     "json-repair>=0.64.2",
     "fastapi>=0.162.0",
     "uvicorn[standard]>=0.54.0",
+    "pypdf>=6.21.4,<7",
 ]
 
 [project.urls]

@@ -42,6 +42,10 @@ jobs:
         run: uv run pytest -m "not integration" --cov=rag --cov-report=term --cov-fail-under=80
       - name: Integration tests (Postgres + pgvector)
         run: uv run pytest -m integration
+      - name: Audit runtime dependencies for known vulnerabilities
+        run: |
+          uv export --frozen --no-dev --extra langchain --no-emit-project -o "$RUNNER_TEMP/req.txt"
+          uvx pip-audit --strict --disable-pip -r "$RUNNER_TEMP/req.txt"
 
   web:
     runs-on: ubuntu-latest
@@ -52,13 +56,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci
+      - run: npm audit --omit=dev --audit-level=high
       - run: npx tsc --noEmit
       - run: npm test
       - run: npm run build

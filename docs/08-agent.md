@@ -38,6 +38,8 @@ that tool result, so the citation rules from chapter 5 still apply.
   CLI's `-k` does not apply in agent mode: the model picks `k` (1-10) for each search.
 - [`src/rag/agent/prompt.py`](../src/rag/agent/prompt.py): the agent's rules (answer only from
   tool results, cite numbers it was shown, refuse otherwise) and the text of the forced final turn.
+  Over uploaded documents, `run_agent(..., generic=True)` (and `run_lc_agent`) swap in
+  `GENERIC_AGENT_SYSTEM` and `GENERIC_SEARCH_DOCS`, which drop the Kubernetes vocabulary advice.
 - [`src/rag/generate/generator.py`](../src/rag/generate/generator.py): `ToolGenerator` has one
   `chat` method per provider. `ClaudeGenerator` and `OpenAICompatibleGenerator` translate the
   neutral transcript into each API's tool format; `ScriptedToolGenerator` replays fixed turns for

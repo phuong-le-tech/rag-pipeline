@@ -23,7 +23,7 @@ export type PopState = { id: string; n: string; anchor: HTMLElement; pinned: boo
 // Mutable view-model, mirrored from the prototype: actions mutate it, then call render().
 export type Store = {
   col: Collection | null;
-  up: { col: Collection; ing: Ing } | null; // the session's one upload, memory only
+  up: { col: Collection; ing: Ing } | null; // the visitor's collection of uploaded files, memory only
   info: CollectionInfo | null;
   apiDown: boolean;
   chunks: Map<string, Chunk>; // every passage seen in the current query, for citations

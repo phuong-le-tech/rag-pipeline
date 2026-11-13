@@ -46,6 +46,9 @@ Design choices, and why:
   instead of a judgement call, which makes refusals countable in evals.
 - **Question last.** Models attend well to the end of the prompt, and the instructions about
   the passages come before the passages.
+- **One prompt per collection.** Uploaded documents get `GENERIC_SYSTEM_PROMPT`: the same rules,
+  but "the user's own documents" instead of "Kubernetes", so a recipe or a contract is not framed
+  as cluster docs. The Kubernetes prompt is left unchanged because the evals measured it.
 
 ### Checking citations ([`citations.py`](../src/rag/generate/citations.py))
 
