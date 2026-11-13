@@ -17,6 +17,7 @@ from rag.ingest.pipeline import embedding_text, store_document
 
 MAX_UPLOAD_BYTES = 1_000_000
 MAX_UPLOAD_CHUNKS = 300
+MAX_COLLECTION_DOCS = 20
 PREVIEW_CHUNKS = 3
 PREVIEW_CHARS = 160
 
@@ -42,7 +43,9 @@ def ingest_upload(
     filename: str,
     text: str,
 ) -> Iterator[Event]:
-    """Yield ``stage`` events (load, clean, chunk, embed, store), then ``done``."""
+    """Yield ``stage`` events (load, clean, chunk, embed, store), then ``done``.
+
+    ``collection`` may already hold documents: the file is added to it (same name replaces)."""
     t = time.perf_counter()
 
     def stage(name: str, **data) -> Event:
@@ -62,8 +65,20 @@ def ingest_upload(
         for c in chunks[:PREVIEW_CHUNKS]
     ]
     yield stage("chunk", chunks=len(chunks), previews=previews)
+    others = conn.execute(  # re-uploading a file with the same name replaces it, so not counted
+        "SELECT count(*) FROM documents WHERE collection = %s AND source <> %s",
+        (collection, doc.source),
+    ).fetchone()[0]
+    if others >= MAX_COLLECTION_DOCS:
+        raise ValueError(f"a collection holds at most {MAX_COLLECTION_DOCS} documents")
     vectors = embedder.embed([embedding_text(c) for c in chunks])
     yield stage("embed", chunks=len(chunks), dim=settings.embedding_dim)
     store_document(conn, doc, chunks, vectors, settings.pipeline_fingerprint(), collection)
     yield stage("store", docs=1, chunks=len(chunks))
-    yield "done", {"collection": collection, "docs": 1, "chunks": len(chunks)}
+    docs, total = conn.execute(
+        "SELECT count(DISTINCT d.id), count(c.id) FROM documents d "
+        "LEFT JOIN chunks c ON c.document_id = d.id WHERE d.collection = %s",
+        (collection,),
+    ).fetchone()
+    # Collection totals, so the UI can show the whole set after each added file.
+    yield "done", {"collection": collection, "docs": docs, "chunks": total}

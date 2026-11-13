@@ -1,8 +1,9 @@
 # 7. Serving: the web UI, API, streaming
 
 > Status: 🚧 the UI in [`web/`](../web/) runs on the **real pipeline** through a FastAPI service
-> ([`src/rag/api/`](../src/rag/api/)) that streams each stage. Ask over the Kubernetes docs, or
-> upload a Markdown/text file and watch it being indexed. Deploy runbook: README "Deploy".
+> ([`src/rag/api/`](../src/rag/api/)) that streams each stage. Ask over the Kubernetes docs (the
+> demo default), or bring your own documents (Markdown, text or PDF, up to 20 files) and watch
+> them being indexed. Deploy runbook: README "Deploy".
 
 ## Concept
 
@@ -45,7 +46,7 @@ stream reader (not `EventSource`, which can't send a POST body).
 ### The API ([`src/rag/api/app.py`](../src/rag/api/app.py))
 
 `POST /api/ask` with `{"question", "k", "rerank", "max_one_per_page", "impl"}` answers with a stream
-(`impl` is `handwritten` or `langchain`, see [chapter 9](09-langchain.md); the events are identical). With `"agent": true` the model decides what to search ([chapter 8](08-agent.md)); the stream is the same plus `step` events, and there are no `token` events:
+(`impl` is `handwritten` or `langchain`, see [chapter 9](09-langchain.md); the events are identical). With `"agent": true` the model decides what to search ([chapter 8](08-agent.md)); the stream is the same plus `step` events, and there are no `token` events. `max_one_per_page` only applies to the Kubernetes docs: an upload is often one file, and one chunk per file would leave a single passage. The events:
 
 | Event | When | Payload |
 |---|---|---|
@@ -69,23 +70,52 @@ names for the UI footer, and which `impls` and whether `agent` mode are offered)
 
 ### Uploads ([`src/rag/ingest/upload.py`](../src/rag/ingest/upload.py))
 
-`POST /api/collections` takes a multipart `file` (`.md`/`.txt`) or JSON `{"text"}`, and streams
-the ingest as the same kind of SSE: `stage` events `load → clean → chunk → embed → store` (each
-with `ms` and counts; `chunk` carries the first 3 chunk previews), then
-`done {collection, docs, chunks}`. Ask about it with `POST /api/ask {"collection": "<id>"}`;
-`GET /api/collection?id=` returns its counts.
+`POST /api/collections` takes a multipart `file` (`.md`, `.txt` or `.pdf`) or JSON `{"text"}`,
+and streams the ingest as the same kind of SSE: `stage` events `load → clean → chunk → embed →
+store` (each with `ms` and counts; `chunk` carries the first 3 chunk previews), then
+`done {collection, docs, chunks}` with the **collection's** totals. Without a `collection` id it
+starts a new collection; with one (a multipart `collection` field or a JSON `"collection"` key) it
+adds the file to that collection instead, so a visitor builds a small knowledge base one file at a
+time. The id travels in the body, never the URL: it is the collection's only key, and proxies
+such as Railway's edge log URLs. Ask about it with
+`POST /api/ask {"collection": "<id>"}`; `GET /api/collection?id=` returns its counts.
+
+- **Adding to a collection.** The id must already exist (else 404), so a client cannot create a
+  collection under an id it chose (and could guess). A file with the same name replaces the
+  earlier one (its source `upload:<id>/<name>` is the upsert key). At most 20 documents per
+  collection, checked after chunking and before the costly embedding.
+- **PDF.** A body that starts with `%PDF-` goes through `pdf_to_text`
+  ([`loaders.py`](../src/rag/ingest/loaders.py), `pypdf`) in a worker thread, so a heavy PDF does
+  not block the event loop, and only after taking a concurrency slot, so parses are capped like
+  asks. Pages are joined with blank lines. Encrypted, broken or over-300-page PDFs, and PDFs whose
+  text passes 1,000,000 characters (more than 300 chunks could hold), are refused with 422; a scan with no text layer comes out empty and is refused too (no
+  OCR).
+- **Topic-neutral prompts.** An ask over an uploaded collection uses `GENERIC_SYSTEM_PROMPT`, and
+  agent mode uses `GENERIC_AGENT_SYSTEM` and `GENERIC_SEARCH_DOCS`: same rules, but "the user's
+  own documents" instead of "Kubernetes". The `k8s` collection keeps the measured prompts byte for
+  byte, so the eval numbers still describe it.
 
 - **The id is the access control.** `uuid4().hex` is 128 random bits: nobody can guess another
   visitor's collection, so there are no accounts. The search filter makes an upload invisible to
   Kubernetes questions and the reverse.
-- **Limits** protect a small CPU box: 1 MB body (checked from `Content-Length` and while reading,
-  before parsing), UTF-8 only (else 422), at most 300 chunks. Uploads share the per-IP rate limit
-  and the concurrency slots with ask. On a laptop, embedding 300 chunks took about 12 s with the
+- **Limits** protect a small CPU box: 1 MB body per file (checked from `Content-Length` and while
+  reading, before parsing), UTF-8 or PDF only (else 422), at most 300 chunks per file and 20
+  files per collection. Uploads have their own per-IP rate limit (20 per minute, so a full
+  collection fits in one minute; they never call the LLM, so they don't need the question limit)
+  and share the concurrency slots with ask. The web app retries a file once, 2 s later, when the
+  slots are busy (503 is refused before anything is stored), so a batch survives a concurrent
+  question. On a laptop, embedding 300 chunks took about 12 s with the
   local model; the work runs in the request thread, like ask.
 - **No python-multipart.** The multipart body is parsed with the stdlib `email` parser, so the
   API gains no dependency.
-- **24 h TTL.** The start of each upload deletes upload collections older than
-  `RAG_UPLOAD_TTL_HOURS` (chunks cascade). No scheduler to run; `k8s` is never touched.
+- **24 h TTL.** A daemon thread deletes uploaded documents older than `RAG_UPLOAD_TTL_HOURS`
+  every 10 minutes (chunks cascade), and each upload also purges first. Expiry used to wait for
+  the next upload, which on a quiet day broke the privacy page's "up to 24 hours". The clock is
+  per file, so in a collection built over several hours the earliest files expire first. `k8s` is
+  never touched. Railway's database backups may still hold deleted files until they expire.
+- **Confidentiality.** Embedding is local, but answering sends the top passages to the model
+  provider, which may log them. The line under the question box and the privacy page tell visitors not to upload
+  confidential files.
 - **Nothing is logged** about an upload but a random id, status and total time: not the text,
   not the filename.
 
@@ -137,21 +167,28 @@ browser ──► Vercel (Next.js UI) ──► Railway API (FastAPI + ONNX mode
 | File | What |
 |---|---|
 | `lib/api.ts` | `getCollection`, `askStream` / `uploadStream` (fetch + SSE parser), `ingestUpdate` (server stage to card), `toChunk`, `splitCitations` |
-| `components/GlassBox.tsx` | maps each SSE event onto the view-model; errors become messages, never a frozen screen; holds the one upload in memory |
+| `components/GlassBox.tsx` | maps each SSE event onto the view-model; errors become messages, never a frozen screen; holds the visitor's collection id in memory |
 | `components/Panels.tsx`, `Overlays.tsx` | Source, Pipeline, Ask, popovers, settings, ⌘K palette |
 | `app/privacy`, `app/legal` | what is processed and stored, publisher, hosting, content credits |
 
-The Source panel takes a dropped or chosen `.md`/`.txt` file (a button, so the keyboard works) or
-pasted text. The server's five ingest stages fill the four Pipeline cards (`load` + `clean` are
+The Source panel takes dropped or chosen `.md`, `.txt` or `.pdf` files (a button, so the keyboard
+works; several at once are uploaded one after another, stopping at the first failure) or pasted
+text. Once a collection exists the button reads "Add files" and every new file joins it. The server's five ingest stages fill the four Pipeline cards (`load` + `clean` are
 "Parse"), the first chunk previews open under the Chunk card, and the collection menu then lists
-"Kubernetes docs" plus the upload; picking either clears the conversation, because an answer
-belongs to the collection it was asked of. Asks pass the upload id as `collection`. The id lives
+"Kubernetes docs" plus "Your documents"; picking either clears the conversation, because an answer
+belongs to the collection it was asked of. Asks pass the collection id as `collection`. The id lives
 only in the page's memory: reloading forgets it (the server deletes the data after 24 h anyway).
-413, 422, 429 and 503 each get their own message.
+404 (collection expired, the next file starts a new one), 413, 422, 429 and 503 each get their
+own message.
 
 ## Trade-offs
 
-- **One upload per session, in memory.** Simple and private, but a reload loses the handle.
+- **One collection per session, in memory.** Simple and private, but a reload loses the handle,
+  and there is no way to remove one file or start over short of reloading.
+- **Neutral prompts are not evaluated.** The golden set is Kubernetes; answers over uploaded
+  documents follow the same rules but have no measured Hit@5 or refusal rate.
+- **PDF text is flat.** `pypdf` returns no headings, so PDF chunks split by size rather than by
+  section, and their heading path is just the title.
 - **Previews are the first 3 chunks**, what the server sends, not the whole chunk list.
 - **Stages arrive together.** The retriever runs inside one request; the stage events are sent
   as soon as retrieval finishes (~1.5 s), then tokens stream. Timings shown are real.

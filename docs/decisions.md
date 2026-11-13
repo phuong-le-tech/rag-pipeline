@@ -2,6 +2,22 @@
 
 Newest first. Each entry: context, decision, consequences. Revisit when evals say otherwise.
 
+## 2026-11-13: Own documents are first-class: PDF, multi-file collections, neutral prompts
+**Context.** Kubernetes should be the demo default, not the only use: a visitor should see the
+pipeline work on their own documents, the way it would on a company's. Uploads took one Markdown
+or text file, replaced it on the next upload, and answered with prompts that said "Kubernetes".
+**Decision.** PDF uploads via `pypdf` (text layer only, no OCR). A `collection` id in the
+upload body (never the URL, which proxies log) adds a file to an existing collection (same name replaces; 20 files max; the id
+must exist, so clients cannot choose ids). Uploaded collections get `GENERIC_SYSTEM_PROMPT`,
+`GENERIC_AGENT_SYSTEM` and `GENERIC_SEARCH_DOCS`; `k8s` keeps the measured prompts unchanged.
+**Consequences.** Eval numbers still hold for Kubernetes but say nothing about uploads. One new
+dependency (`pypdf`, pure Python, pinned below 7 because 7.0 was days old) parses untrusted
+files, bounded by the 1 MB, 300-page and 1M-character caps, inside a concurrency slot and off
+the event loop. Expiry stays per file, so a collection can shrink as
+its oldest files pass 24 h; a 10-minute purge thread now enforces that instead of waiting for
+the next upload. Passages reach the model provider, so visitors are told not to upload
+confidential files. `rag ingest` is still Kubernetes-only.
+
 ## 2026-10-13: Uploads are capability-id collections that expire after 24 h
 **Context.** Visitors should ask questions over their own Markdown/text without accounts, on a
 public demo with a small CPU box and a privacy page that promises not to keep questions.

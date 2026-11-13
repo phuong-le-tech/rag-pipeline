@@ -8,11 +8,13 @@ heading path starts with it.
 
 import hashlib
 import html
+import io
 import re
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
+import pypdf
 import yaml
 
 # Bump whenever cleaning output changes: it is part of the pipeline fingerprint, so every
@@ -161,3 +163,30 @@ def load_upload(text: str, filename: str, collection: str) -> Document:
         content_hash=hashlib.sha256(cleaned.encode("utf-8")).hexdigest(),
         generated=False,
     )
+
+
+PDF_MAGIC = b"%PDF-"
+MAX_PDF_PAGES = 300
+# 300 chunks hold ~450 KB, so more text could never be indexed; stop before building it all.
+MAX_PDF_TEXT_CHARS = 1_000_000
+
+
+def pdf_to_text(raw: bytes) -> str:
+    """Text layer of an uploaded PDF, pages separated by a blank line. No OCR: scans come back
+    empty and ``load_upload`` rejects them."""
+    try:
+        reader = pypdf.PdfReader(io.BytesIO(raw))
+        if reader.is_encrypted:
+            raise ValueError("password-protected PDFs are not supported")
+        if len(reader.pages) > MAX_PDF_PAGES:
+            raise ValueError(f"PDF has {len(reader.pages)} pages; the limit is {MAX_PDF_PAGES}")
+        pages, size = [], 0
+        for page in reader.pages:
+            text = (page.extract_text() or "").strip()
+            size += len(text)
+            if size > MAX_PDF_TEXT_CHARS:
+                raise ValueError(f"PDF text is over {MAX_PDF_TEXT_CHARS:,} characters")
+            pages.append(text)
+        return "\n\n".join(pages)
+    except pypdf.errors.PyPdfError as exc:
+        raise ValueError(f"unreadable PDF: {exc}") from None

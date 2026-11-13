@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     # API (web UI backend)
     cors_origins: str = "http://localhost:3000"  # comma-separated
     rate_limit_per_minute: int = Field(default=10, gt=0)
+    # Uploads never call the LLM (slots cap their CPU), so they get their own per-IP bucket,
+    # sized so a full 20-file collection fits in one minute.
+    upload_rate_limit_per_minute: int = Field(default=20, gt=0)
     daily_llm_limit: int = Field(default=300, ge=0)
     max_concurrent_asks: int = Field(default=2, gt=0)
     upload_ttl_hours: int = Field(default=24, gt=0)  # visitor uploads are deleted after this

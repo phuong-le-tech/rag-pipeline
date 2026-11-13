@@ -7,6 +7,7 @@ import logging
 import re
 import threading
 import time
+import traceback
 import uuid
 import weakref
 from collections.abc import Callable, Iterator
@@ -22,6 +23,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field, StringConstraints
+from starlette.concurrency import run_in_threadpool
 
 from rag.agent.loop import (
     DEFAULT_LIMITS,
@@ -37,6 +39,8 @@ from rag.api.guards import DailyBudget, RateLimiter
 from rag.config import Settings
 from rag.generate.answer import Answer, stream_answer
 from rag.generate.generator import Generator, ToolGenerator
+from rag.generate.prompt import GENERIC_SYSTEM_PROMPT, SYSTEM_PROMPT
+from rag.ingest.loaders import PDF_MAGIC, pdf_to_text
 from rag.ingest.upload import MAX_UPLOAD_BYTES
 from rag.lc.llm import LANGCHAIN_BACKENDS
 from rag.retrieval.retriever import RetrieverConfig
@@ -51,6 +55,7 @@ DAILY_LIMIT_MSG = (
 LLM_FAILED_MSG = "The model call failed. Retrieval results are kept; retry in a moment."
 SERVER_FAILED_MSG = "Something went wrong on the server. Please retry."
 COLLECTION_ID = r"^[0-9a-f]{32}$"
+PURGE_EVERY_S = 600  # expired uploads are gone at most 10 min after their TTL
 MULTIPART_OVERHEAD = 4096  # headers and boundaries around the file in a multipart body
 
 
@@ -134,8 +139,21 @@ def default_services(settings: Settings) -> Services:  # pragma: no cover - need
     def index_upload(collection: str, filename: str, text: str) -> Iterator[tuple[str, dict]]:
         with connect(settings) as conn:
             register_vector(conn)
-            purge_expired(conn, settings.upload_ttl_hours)  # lazy TTL: no scheduler needed
+            purge_expired(conn, settings.upload_ttl_hours)
             yield from ingest_upload(conn, embedder, settings, collection, filename, text)
+
+    def purge_loop() -> None:
+        # The privacy page promises deletion within the TTL even when nobody uploads, so expiry
+        # can't wait for the next upload. Daemon thread: one replica, dies with the process.
+        while True:
+            time.sleep(PURGE_EVERY_S)
+            try:
+                with connect(settings) as conn:
+                    purge_expired(conn, settings.upload_ttl_hours)
+            except Exception:
+                log.exception("upload purge failed")
+
+    threading.Thread(target=purge_loop, name="upload-purge", daemon=True).start()
 
     lc_generator = lc_agent_model = None
     if importlib.util.find_spec("langchain_core") and settings.llm_backend in LANGCHAIN_BACKENDS:
@@ -221,7 +239,8 @@ def run_ask(
             return
         gen_start, generating = time.perf_counter(), True
         result: Answer | None = None
-        for item in stream_answer(question, hits, generator):
+        system = SYSTEM_PROMPT if config.collection == "k8s" else GENERIC_SYSTEM_PROMPT
+        for item in stream_answer(question, hits, generator, system):
             if isinstance(item, Answer):
                 result = item
             else:
@@ -250,7 +269,12 @@ def run_ask(
 
 
 def _agent_events(
-    impl: str, question: str, search: SearchTool, services: Services, budget: DailyBudget
+    impl: str,
+    question: str,
+    search: SearchTool,
+    services: Services,
+    budget: DailyBudget,
+    generic: bool = False,
 ) -> Iterator[ToolCallEvent | ToolResultEvent | AgentResult]:
     if impl == "langchain":
         from rag.lc.agent import run_lc_agent
@@ -262,12 +286,18 @@ def _agent_events(
             search,
             services.agent_limits,
             take_budget=budget.take,
+            generic=generic,
         )
         yield from result.steps
         yield result
     else:
         yield from run_agent(
-            question, services.tool_generator(), search, services.agent_limits, budget.take
+            question,
+            services.tool_generator(),
+            search,
+            services.agent_limits,
+            budget.take,
+            generic=generic,
         )
 
 
@@ -290,7 +320,8 @@ def run_ask_agent(
         calls: dict[int, ToolCallEvent] = {}
         with services.retriever_factory() as retriever:
             search = SearchTool(retriever, config)
-            for event in _agent_events(impl, question, search, services, budget):
+            generic = config.collection != "k8s"
+            for event in _agent_events(impl, question, search, services, budget, generic):
                 if isinstance(event, ToolCallEvent):
                     calls[event.step] = event
                 elif isinstance(event, ToolResultEvent):
@@ -367,9 +398,12 @@ def run_upload(
     except ValueError as exc:  # our own limits and empty-input checks; the message is ours
         status = "rejected"
         yield sse("error", {"code": status, "message": str(exc)})
-    except Exception:
+    except Exception as exc:
         status = "failed"
-        log.exception("upload %s failed", rid)
+        # Type and stack only: DB error messages can quote values (the collection id, the
+        # filename), and upload data must never reach the logs.
+        stack = "".join(traceback.format_tb(exc.__traceback__))
+        log.error("upload %s failed: %s\n%s", rid, type(exc).__name__, stack)
         yield sse("error", {"code": status, "message": SERVER_FAILED_MSG})
     finally:
         release()
@@ -380,23 +414,35 @@ def run_upload(
         )
 
 
-def parse_upload(content_type: str, body: bytes) -> tuple[str, bytes]:
-    """(filename, raw bytes) from a multipart ``file`` part or a JSON ``{"text": ...}`` body."""
+def parse_upload(content_type: str, body: bytes) -> tuple[str, bytes, str | None]:
+    """(filename, raw bytes, collection) from a multipart body (``file`` part, optional
+    ``collection`` part) or JSON ``{"text": ..., "collection"?: ...}``. The collection id is the
+    only key to a collection, so it travels in the body: URLs end up in proxy access logs."""
     if content_type.startswith("application/json"):
         try:
-            text = json.loads(body)["text"]
-        except (ValueError, KeyError, TypeError):
+            data = json.loads(body)
+            text, collection = data["text"], data.get("collection")
+        except (ValueError, KeyError, TypeError, AttributeError):
             raise ValueError('JSON body must be {"text": "..."}') from None
         if not isinstance(text, str):
             raise ValueError('"text" must be a string')
-        return "pasted.md", text.encode("utf-8")
+        if collection is not None and not isinstance(collection, str):
+            raise ValueError('"collection" must be a string')
+        return "pasted.md", text.encode("utf-8"), collection
     if content_type.startswith("multipart/form-data"):
         # stdlib parser: python-multipart is not a dependency
         header = b"Content-Type: " + content_type.encode("latin-1", "replace") + b"\r\n\r\n"
+        file, collection = None, None
         for part in BytesParser(policy=HTTP).parsebytes(header + body).iter_parts():
-            if part.get_param("name", header="content-disposition") == "file":
-                return part.get_filename() or "upload.md", part.get_payload(decode=True) or b""
-        raise ValueError('multipart body needs a "file" part')
+            name = part.get_param("name", header="content-disposition")
+            if name == "file" and file is None:
+                file = (part.get_filename() or "upload.md", part.get_payload(decode=True) or b"")
+            elif name == "collection":
+                raw = part.get_payload(decode=True) or b""
+                collection = raw.decode("ascii", "replace").strip()
+        if file is None:
+            raise ValueError('multipart body needs a "file" part')
+        return *file, collection
     raise ValueError("send multipart/form-data with a file, or JSON {text}")
 
 
@@ -439,9 +485,20 @@ def create_app(settings: Settings, services: Services | None = None) -> FastAPI:
         allow_methods=["GET", "POST"],
         allow_headers=["Content-Type"],
     )
+
+    @app.middleware("http")
+    async def security_headers(request: Request, call_next):
+        response = await call_next(request)
+        # JSON and event streams only: no sniffing, never framed, never referred from.
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        return response
+
     if services is not None:
         app.state.services = services
     app.state.limiter = RateLimiter(settings.rate_limit_per_minute)
+    app.state.upload_limiter = RateLimiter(settings.upload_rate_limit_per_minute)
     app.state.budget = DailyBudget(settings.daily_llm_limit)
     app.state.slots = threading.Semaphore(settings.max_concurrent_asks)
     llm_model = (
@@ -471,7 +528,7 @@ def create_app(settings: Settings, services: Services | None = None) -> FastAPI:
         if id is not None and not stats["docs"]:
             return JSONResponse({"error": "not_found"}, status_code=404)
         return {
-            "name": "Your upload" if id else "Kubernetes docs",
+            "name": "Your documents" if id else "Kubernetes docs",
             **stats,
             "llm_model": llm_model,
             "embedding_model": settings.embedding_model_name(),
@@ -498,7 +555,8 @@ def create_app(settings: Settings, services: Services | None = None) -> FastAPI:
         config = ask_config(k=body.k, rerank=body.rerank, generated=True, rewrite=False)
         if body.collection:
             config = replace(config, collection=body.collection)
-        if not body.max_one_per_page:
+        # An upload is often one file, so a per-file cap would leave a single passage.
+        if body.collection or not body.max_one_per_page:
             config = replace(config, max_per_source=None)
         release = slot_releaser(slots)
         run = run_ask_agent if body.agent else run_ask
@@ -521,7 +579,8 @@ def create_app(settings: Settings, services: Services | None = None) -> FastAPI:
 
     @app.post("/api/collections")
     async def upload(request: Request):
-        wait = request.app.state.limiter.check(client_key(request))
+        """New collection, or with a ``collection`` id in the body add the file to that one."""
+        wait = request.app.state.upload_limiter.check(client_key(request))
         if wait:
             return JSONResponse(
                 {"error": "rate_limited", "retry_after": wait},
@@ -537,19 +596,40 @@ def create_app(settings: Settings, services: Services | None = None) -> FastAPI:
             if len(body) > cap:
                 return JSONResponse({"error": "too_large"}, status_code=413)
         try:
-            filename, raw = parse_upload(request.headers.get("content-type", ""), bytes(body))
-            if len(raw) > MAX_UPLOAD_BYTES:
-                return JSONResponse({"error": "too_large"}, status_code=413)
-            text = raw.decode("utf-8")
-        except UnicodeDecodeError:
-            return JSONResponse({"error": "not_utf8"}, status_code=422)
+            filename, raw, collection = parse_upload(
+                request.headers.get("content-type", ""), bytes(body)
+            )
         except ValueError as exc:
             return JSONResponse({"error": "bad_upload", "message": str(exc)}, status_code=422)
+        if collection is not None and not re.fullmatch(COLLECTION_ID, collection):
+            return JSONResponse({"error": "bad_collection"}, status_code=422)
+        if len(raw) > MAX_UPLOAD_BYTES:
+            return JSONResponse({"error": "too_large"}, status_code=413)
+        # Take the slot before parsing: PDF parsing is the costly step, so it must be capped too.
         slots = request.app.state.slots
         if not slots.acquire(blocking=False):
             return JSONResponse({"error": "busy"}, status_code=503)
         release = slot_releaser(slots)
-        stream = run_upload(uuid.uuid4().hex, filename, text, request.app.state.services, release)
+        try:
+            if raw.startswith(PDF_MAGIC):  # CPU-bound: keep it off the event loop
+                text = await run_in_threadpool(pdf_to_text, raw)
+            else:
+                text = raw.decode("utf-8")
+            services = request.app.state.services
+            # Only add to a collection that exists: a client must not pick its own (guessable) id.
+            if collection is not None and not services.stats(collection)["docs"]:
+                release()
+                return JSONResponse({"error": "not_found"}, status_code=404)
+        except UnicodeDecodeError:
+            release()
+            return JSONResponse({"error": "not_utf8"}, status_code=422)
+        except ValueError as exc:
+            release()
+            return JSONResponse({"error": "bad_upload", "message": str(exc)}, status_code=422)
+        except BaseException:
+            release()
+            raise
+        stream = run_upload(collection or uuid.uuid4().hex, filename, text, services, release)
         weakref.finalize(stream, release)
         return StreamingResponse(
             stream,

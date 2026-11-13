@@ -107,12 +107,15 @@ export const askStream = (body: AskBody, onEvent: (e: SSE) => void, signal?: Abo
   streamSSE("/api/ask", { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal }, onEvent);
 
 // A file goes up as multipart (the browser sets the boundary), pasted text as JSON.
-export function uploadStream(input: File | string, onEvent: (e: SSE) => void, signal?: AbortSignal): Promise<void> {
+// With `collection`, it is added to that existing collection instead of starting a new one.
+// The id goes in the body, never the URL: it is the collection's only key and URLs get logged.
+export function uploadStream(input: File | string, onEvent: (e: SSE) => void, signal?: AbortSignal, collection?: string): Promise<void> {
   if (typeof input === "string") {
-    return streamSSE("/api/collections", { headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: input }), signal }, onEvent);
+    return streamSSE("/api/collections", { headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: input, collection }), signal }, onEvent);
   }
   const form = new FormData();
   form.append("file", input);
+  if (collection) form.append("collection", collection);
   return streamSSE("/api/collections", { body: form, signal }, onEvent);
 }
 

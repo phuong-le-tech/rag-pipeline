@@ -26,20 +26,24 @@ export function SourcePanel({ S, A }: P) {
   const busy = S.phase === "ingesting" || S.busy;
   const fileIn = useRef<HTMLInputElement>(null);
   const [paste, setPaste] = useState(false);
-  const take = (f?: File) => { if (f && !busy) void A.upload(f); };
+  // Several files go up one after another into the same collection; stop at the first failure.
+  const take = async (files?: FileList | null) => {
+    if (busy || !files) return;
+    for (const f of Array.from(files)) if (!(await A.upload(f))) break;
+  };
   return (
     <section className="panel strip-src" id="p-src" aria-label="Source">
       <div className="src-row" id="src">
         <button className="btn drop" type="button" disabled={busy} onClick={() => fileIn.current?.click()}
           onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add("over"); }}
           onDragLeave={(e) => e.currentTarget.classList.remove("over")}
-          onDrop={(e) => { e.preventDefault(); e.currentTarget.classList.remove("over"); take(e.dataTransfer.files[0]); }}>
-          Drop file
+          onDrop={(e) => { e.preventDefault(); e.currentTarget.classList.remove("over"); void take(e.dataTransfer.files); }}>
+          {S.up ? "Add files" : "Drop files"}
         </button>
-        <input ref={fileIn} type="file" accept=".md,.markdown,.txt,text/markdown,text/plain" hidden aria-label="Choose a Markdown or text file"
-          onChange={(e) => { take(e.target.files?.[0]); e.target.value = ""; }} />
+        <input ref={fileIn} type="file" accept=".md,.markdown,.txt,.pdf,text/markdown,text/plain,application/pdf" multiple hidden aria-label="Choose Markdown, text or PDF files"
+          onChange={(e) => { const files = e.target.files; void take(files).then(() => { e.target.value = ""; }); }} />
         <button className="btn" type="button" disabled={busy} aria-expanded={paste} aria-controls="paste-form" onClick={() => setPaste(!paste)}>Paste text</button>
-        <span className="src-cap">.md or .txt, up to 1 MB. Kept for up to 24 hours, then deleted.</span>
+        <span className="src-cap">Up to 20 files (.md, .txt or .pdf, 1 MB each). Each is kept for 24 hours, then deleted.</span>
         <div className="colls">
           <button className="collbtn" type="button" disabled={busy} onClick={() => A.pick("k8s")} aria-pressed={S.col?.id === "k8s"}>
             <span className="t">Kubernetes docs</span>
@@ -488,7 +492,7 @@ export function AskPanel({ S, A, h, chatRef, inputRef }: P & { chatRef: React.Re
             <span>{S.busy ? "Answering…" : "Ask"}</span><kbd aria-hidden="true">⏎</kbd>
           </button>
         </div>
-        <p className="fine">Questions go to a third-party AI model: don&apos;t include personal data. <a href="/privacy">Privacy</a></p>
+        <p className="fine">Questions and passages from your files go to a third-party AI model that may log them: don&apos;t include personal or confidential data. <a href="/privacy">Privacy</a></p>
       </form>
     </section>
   );

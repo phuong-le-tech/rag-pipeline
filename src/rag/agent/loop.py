@@ -10,8 +10,8 @@ from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 from typing import Literal
 
-from rag.agent.prompt import AGENT_SYSTEM, FORCE_ANSWER
-from rag.agent.tools import SEARCH_DOCS, SearchResult, parse_search_args
+from rag.agent.prompt import AGENT_SYSTEM, FORCE_ANSWER, GENERIC_AGENT_SYSTEM
+from rag.agent.tools import GENERIC_SEARCH_DOCS, SEARCH_DOCS, SearchResult, parse_search_args
 from rag.config import Settings
 from rag.generate.answer import Answer, finish_answer
 from rag.generate.generator import Message, ToolCall, ToolGenerator, Turn
@@ -111,6 +111,7 @@ class _State:
     tool_calls: int = 0
     input_tokens: int | None = None
     output_tokens: int | None = None
+    generic: bool = False
 
     @property
     def tokens(self) -> int:
@@ -124,9 +125,10 @@ def run_agent(
     limits: Limits = DEFAULT_LIMITS,
     take_budget: Callable[[], bool] = lambda: True,
     clock: Callable[[], float] = time.monotonic,
+    generic: bool = False,  # uploaded collection: topic-neutral prompt and tool description
 ) -> Iterator[AgentEvent | AgentResult]:
     start = clock()
-    st = _State(messages=[{"role": "user", "content": question}])
+    st = _State(messages=[{"role": "user", "content": question}], generic=generic)
     while True:
         stopped = _limit_reason(st, limits, clock() - start)
         if stopped is not None:
@@ -165,7 +167,10 @@ def _limit_reason(st: _State, limits: Limits, elapsed: float) -> Stop | None:
 
 
 def _chat(llm: ToolGenerator, st: _State, allow_tools: bool = True) -> Turn:
-    turn = llm.chat(AGENT_SYSTEM, st.messages, [SEARCH_DOCS], allow_tools=allow_tools)
+    system, tool = (
+        (GENERIC_AGENT_SYSTEM, GENERIC_SEARCH_DOCS) if st.generic else (AGENT_SYSTEM, SEARCH_DOCS)
+    )
+    turn = llm.chat(system, st.messages, [tool], allow_tools=allow_tools)
     st.llm_calls += 1
     st.input_tokens = _add(st.input_tokens, turn.input_tokens)
     st.output_tokens = _add(st.output_tokens, turn.output_tokens)

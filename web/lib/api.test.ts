@@ -49,6 +49,21 @@ test("uploadStream sends a file as multipart and pasted text as JSON, and relays
   assert.deepEqual(seen, ["done", "done"]);
 });
 
+test("uploadStream sends the collection id in the body, never the URL", async (t) => {
+  const calls: { url: string; init: RequestInit }[] = [];
+  t.mock.method(globalThis, "fetch", async (url: string, init: RequestInit) => {
+    calls.push({ url, init });
+    return sseResponse('event: done\ndata: {"collection":"abc","docs":2,"chunks":4}\n\n');
+  });
+  await uploadStream("more", () => {}, undefined, "abc");
+  await uploadStream(new File(["# Hi"], "hi.md"), () => {}, undefined, "abc");
+  await uploadStream("fresh", () => {});
+  assert.ok(calls.every((c) => c.url.endsWith("/api/collections")));
+  assert.equal(calls[0].init.body, '{"text":"more","collection":"abc"}');
+  assert.equal((calls[1].init.body as FormData).get("collection"), "abc");
+  assert.equal(calls[2].init.body, '{"text":"fresh"}');
+});
+
 test("uploadStream raises ApiError with the server's code on 413", async (t) => {
   t.mock.method(globalThis, "fetch", async () => new Response('{"error":"too_large"}', { status: 413 }));
   await assert.rejects(uploadStream("x", () => {}), (e: ApiError) => e.status === 413 && e.code === "too_large");

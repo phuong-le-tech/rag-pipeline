@@ -19,8 +19,8 @@ pipeline and the agent uses LangChain and LangGraph, and the two are measured ag
 - **Cited answers with refusal**: every `[n]` is validated against the passages sent to the
   model; 0 invented citations, 14/15 unanswerable questions refused
 - **Glass-box UI**: each stage streams over server-sent events with its hits, scores and timing;
-  drop a Markdown file or paste text to watch it ingested (load, clean, chunk, embed, store) and
-  ask questions over it (kept 24 h, then deleted)
+  bring your own documents (up to 20 Markdown, text or PDF files, or pasted text), watch them
+  ingested (load, clean, chunk, embed, store) and ask questions over them (kept 24 h, then deleted)
 - **Opt-in agent mode** (CLI `--agent`, and an Agent switch in the web UI): a tool-calling loop
   where the model decides
   what to search and how often; on the same 94 + 15 questions it cuts false refusals from 7 to 1
@@ -219,8 +219,8 @@ protected by the [guards](#security-and-privacy) below.
 | `GET /ready` | Readiness: database reachable and index non-empty (503 otherwise) |
 | `GET /api/collection` | Document and chunk counts, LLM and embedding model names |
 | `GET /api/collection?id=` | Counts for one upload collection (404 if unknown or expired) |
-| `POST /api/collections` | Upload a `.md`/`.txt` file (multipart `file`) or JSON `{"text"}`; streams `stage` events (`load`, `clean`, `chunk`, `embed`, `store`) then `done {collection, docs, chunks}`. Max 1 MB, UTF-8, 300 chunks. Stored up to 24 h, never logged |
-| `POST /api/ask` | Answer a question as a server-sent event stream; optional `collection` (32 hex) asks over an upload |
+| `POST /api/collections` | Upload a `.md`/`.txt`/`.pdf` file (multipart `file`) or JSON `{"text"}`; a `collection` id in the body (a multipart field or JSON key, never the URL, which proxies log) adds it to an existing collection (same name replaces). Streams `stage` events (`load`, `clean`, `chunk`, `embed`, `store`) then `done {collection, docs, chunks}` with collection totals. Max 1 MB and 300 chunks per file, 20 files per collection. Each file is stored up to 24 h, never logged |
+| `POST /api/ask` | Answer a question as a server-sent event stream; optional `collection` (32 hex) asks over uploaded documents with topic-neutral prompts (Kubernetes keeps the measured ones) |
 
 `POST /api/ask` body: `{"question": "...", "k": 5, "rerank": true, "max_one_per_page": true, "impl": "handwritten", "agent": false}`.
 `impl` is `handwritten` (default) or `langchain` (422 `impl_unavailable` when the extra is not installed);
@@ -228,6 +228,8 @@ protected by the [guards](#security-and-privacy) below.
 `agent: true` runs agent mode (422 `agent_unavailable` when `RAG_AGENT_ENABLED=false`): the stream
 adds one `step` event per search and the answer arrives at the end instead of token by token. Each
 model call is charged to the daily budget, so one agent question costs about 2.5 answers.
+`max_one_per_page` applies to the Kubernetes docs only: an upload is often a single file, so
+capping it at one chunk per file would leave one passage and miss answers spread across sections.
 (`question` 1-500 characters, `k` 3-10). The response is `text/event-stream`:
 
 | Event | Payload |
@@ -272,9 +274,10 @@ Environment variables (or `.env` locally). Settings use the `RAG_` prefix; API k
 | `RAG_CHUNK_MAX_CHARS` | `1500` | changing it re-embeds everything on next ingest |
 | `RAG_CORS_ORIGINS` | `http://localhost:3000` | comma-separated origins allowed to call the API |
 | `RAG_RATE_LIMIT_PER_MINUTE` | `10` | questions per client IP |
+| `RAG_UPLOAD_RATE_LIMIT_PER_MINUTE` | `20` | uploaded files per client IP, counted apart from questions |
 | `RAG_DAILY_LLM_LIMIT` | `300` | LLM calls per UTC day; retrieval keeps working past it |
 | `RAG_MAX_CONCURRENT_ASKS` | `2` | extra requests get `503 busy` |
-| `RAG_UPLOAD_TTL_HOURS` | `24` | uploads older than this are deleted at the next upload |
+| `RAG_UPLOAD_TTL_HOURS` | `24` | uploaded files older than this are deleted by a check every 10 minutes |
 
 Web (`web/`, inlined at build time, so changes need a rebuild):
 
@@ -320,11 +323,12 @@ dashboard, never in the repo.
 | Measure | What it does |
 |---|---|
 | Input validation | questions 1-500 characters, `k` 3-10, rejected with 422 before any model runs |
-| Rate limit | 10 questions per minute per client IP, keyed on the IP the edge proxy adds (not the client-supplied part of `X-Forwarded-For`) |
+| Rate limit | 10 questions and, separately, 20 uploaded files per minute per client IP, keyed on the IP the edge proxy adds (not the client-supplied part of `X-Forwarded-For`) |
 | Daily LLM budget | 300 model calls per UTC day, so credits can't be drained |
 | Concurrency cap | 2 answers at once; slots are always released, even when a client disconnects early |
+| Dependency audit | CI fails on known vulnerabilities in runtime dependencies (`pip-audit`, `npm audit`); Dependabot proposes updates monthly |
 | CORS | only the configured UI origin may call the API from a browser |
-| Security headers | Content Security Policy (page may only talk to itself and the API), HSTS, `nosniff`, strict referrer, no framing |
+| Security headers | UI: Content Security Policy (page may only talk to itself and the API), HSTS, `nosniff`, strict referrer, no framing. API: `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer` |
 | Secrets | API keys only in server environment variables (`SecretStr`), never in the browser bundle |
 | Container | non-root user, frozen dependencies, uvicorn access log disabled |
 
@@ -375,7 +379,9 @@ Dockerfile, railway.json, docker-compose.yml
 
 ## Limitations
 
-- **Uploads are Markdown or plain text only**: no PDF or URL ingestion yet, and uploads expire after 24 h.
+- **Uploads are Markdown, plain text or PDF only**: PDFs need a text layer (no OCR for scans), there is no URL ingestion yet, and uploads expire after 24 h.
+  PDF chunks have no section titles (the splitter keys on Markdown headings), and the topic-neutral
+  prompts used for uploads are not covered by the evals.
 - **One API replica**: rate limit, budget and concurrency counters live in process memory.
 - **Free LLM**: upstream rate limits can fail an answer (the UI reports it with a retry) and the
   provider may log prompts. Set `RAG_LLM_BACKEND=anthropic` for Claude.

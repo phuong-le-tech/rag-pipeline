@@ -1,3 +1,4 @@
+import dataclasses
 import json
 from contextlib import contextmanager
 
@@ -263,7 +264,7 @@ def test_upload_rejects_unknown_content_type():
 
 
 def test_upload_is_rate_limited_and_uses_a_slot():
-    c = upload_client(rate_limit_per_minute=1)
+    c = upload_client(upload_rate_limit_per_minute=1)
     assert c.post("/api/collections", json={"text": "a"}).status_code == 200
     assert c.post("/api/collections", json={"text": "a"}).status_code == 429
     busy = upload_client(max_concurrent_asks=1)
@@ -291,7 +292,7 @@ def test_ask_passes_collection_and_rejects_bad_ids():
 
     class Spy(StagedFake):
         def retrieve(self, query, config, on_stage=None):
-            seen.append(config.collection)
+            seen.append((config.collection, config.max_per_source))
             return super().retrieve(query, config, on_stage)
 
     @contextmanager
@@ -305,7 +306,8 @@ def test_ask_passes_collection_and_rejects_bad_ids():
     c.post("/api/ask", json={"question": "q"})
     bad = c.post("/api/ask", json={"question": "q", "collection": "../k8s"})
 
-    assert seen == [CID, "k8s"] and bad.status_code == 422
+    # Uploads skip the one-chunk-per-file cap; the Kubernetes docs keep it.
+    assert seen == [(CID, None), ("k8s", 1)] and bad.status_code == 422
 
 
 def test_collection_stats_by_id():
@@ -531,3 +533,149 @@ def test_agent_log_line_has_agent_and_counts(caplog):
 
 def test_agent_mode_is_on_by_default_in_settings():
     assert Settings(_env_file=None).agent_enabled is True
+
+
+def _pdf(text: str | None) -> bytes:
+    import io
+
+    import pypdf
+    from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
+
+    w = pypdf.PdfWriter()
+    page = w.add_blank_page(200, 200)
+    if text:
+        font = DictionaryObject(
+            {
+                NameObject("/Type"): NameObject("/Font"),
+                NameObject("/Subtype"): NameObject("/Type1"),
+                NameObject("/BaseFont"): NameObject("/Helvetica"),
+            }
+        )
+        page[NameObject("/Resources")] = DictionaryObject(
+            {NameObject("/Font"): DictionaryObject({NameObject("/F1"): w._add_object(font)})}
+        )
+        stream = DecodedStreamObject()
+        stream.set_data(f"BT /F1 12 Tf 10 100 Td ({text}) Tj ET".encode())
+        page[NameObject("/Contents")] = w._add_object(stream)
+    buf = io.BytesIO()
+    w.write(buf)
+    return buf.getvalue()
+
+
+def test_upload_pdf_is_extracted_to_text():
+    seen = {}
+
+    def capture(collection, filename, text):
+        seen["text"] = text
+        yield "done", {"collection": collection, "docs": 1, "chunks": 1}
+
+    c = upload_client()
+    c.app.state.services = dataclasses.replace(c.app.state.services, index_upload=capture)
+    resp = c.post(
+        "/api/collections", files={"file": ("a.pdf", _pdf("Hello PDF"), "application/pdf")}
+    )
+    assert events(resp)[-1][0] == "done" and "Hello PDF" in seen["text"]
+
+
+def test_upload_rejects_broken_pdf_with_422():
+    resp = upload_client().post(
+        "/api/collections", files={"file": ("a.pdf", b"%PDF-1.7 garbage", "application/pdf")}
+    )
+    assert resp.status_code == 422 and resp.json()["error"] == "bad_upload"
+
+
+def test_upload_adds_to_an_existing_collection():
+    c = upload_client()
+    resp = c.post(
+        "/api/collections",
+        files={"file": ("b.md", b"# B\n\nbee", "text/markdown")},
+        data={"collection": CID},
+    )
+    assert events(resp)[-1][1]["collection"] == CID
+    pasted = c.post("/api/collections", json={"text": "more", "collection": CID})
+    assert events(pasted)[-1][1]["collection"] == CID
+
+
+@pytest.mark.parametrize(("cid", "status"), [("nope", 422), ("b" * 32, 404), ("k8s", 422)])
+def test_upload_into_bad_or_unknown_collection_is_refused(cid, status):
+    resp = upload_client().post("/api/collections", json={"text": "hi", "collection": cid})
+    assert resp.status_code == status
+
+
+def test_uploaded_collection_gets_topic_neutral_prompt_and_k8s_keeps_its_own():
+    from rag.generate.prompt import GENERIC_SYSTEM_PROMPT, SYSTEM_PROMPT
+
+    gen = FakeGenerator("ok [1]")
+
+    def ask(collection):
+        c = upload_client()
+        c.app.state.services = dataclasses.replace(c.app.state.services, generator=gen)
+        body = {"question": "what?", **({"collection": collection} if collection else {})}
+        events(c.post("/api/ask", json=body))
+
+    ask(None)
+    ask(CID)
+    assert [system for system, _ in gen.calls] == [SYSTEM_PROMPT, GENERIC_SYSTEM_PROMPT]
+    assert "Kubernetes" not in GENERIC_SYSTEM_PROMPT
+
+
+def test_pdf_is_not_parsed_when_no_slot_is_free(monkeypatch):
+    import rag.api.app as api
+
+    def boom(raw):
+        raise AssertionError("parsed without a slot")
+
+    monkeypatch.setattr(api, "pdf_to_text", boom)
+    c = upload_client(max_concurrent_asks=1)
+    c.app.state.slots.acquire()  # the only slot is busy
+    resp = c.post("/api/collections", files={"file": ("a.pdf", _pdf("x"), "application/pdf")})
+    assert resp.status_code == 503
+
+
+@pytest.mark.parametrize(
+    "file",
+    [("a.pdf", b"%PDF-1.7 garbage"), ("a.md", b"\xff\xfe bad")],  # 422 after taking the slot
+)
+def test_rejected_upload_gives_its_slot_back(file):
+    c = upload_client(max_concurrent_asks=1)
+    assert c.post("/api/collections", files={"file": file}).status_code == 422
+    unknown = {"text": "hi", "collection": "b" * 32}
+    assert c.post("/api/collections", json=unknown).status_code == 404
+    assert events(c.post("/api/collections", json={"text": "# ok"}))[-1][0] == "done"
+
+
+def test_pdf_text_over_the_cap_is_refused(monkeypatch):
+    from rag.ingest import loaders
+
+    monkeypatch.setattr(loaders, "MAX_PDF_TEXT_CHARS", 5)
+    with pytest.raises(ValueError, match="PDF text is over"):
+        loaders.pdf_to_text(_pdf("more than five characters"))
+
+
+def test_uploads_and_questions_have_separate_rate_limits():
+    c = upload_client(rate_limit_per_minute=1, upload_rate_limit_per_minute=3)
+    for _ in range(3):  # a batch of files leaves the question allowance untouched
+        assert c.post("/api/collections", json={"text": "a"}).status_code == 200
+    assert c.post("/api/collections", json={"text": "a"}).status_code == 429
+    assert c.post("/api/ask", json={"question": "what?"}).status_code == 200
+    assert c.post("/api/ask", json={"question": "what?"}).status_code == 429
+
+
+def test_api_sends_security_headers_on_json_and_streams():
+    c = upload_client()
+    for resp in (c.get("/health"), c.post("/api/collections", json={"text": "# a"})):
+        assert resp.headers["x-content-type-options"] == "nosniff"
+        assert resp.headers["x-frame-options"] == "DENY"
+
+
+def test_failed_upload_logs_no_upload_data(caplog):
+    def fail(collection, filename, text):
+        raise RuntimeError(f"duplicate key upload:{collection}/{filename}")
+        yield  # pragma: no cover
+
+    c = upload_client()
+    c.app.state.services = dataclasses.replace(c.app.state.services, index_upload=fail)
+    files = {"file": ("secret-plan.md", b"# x", "text/markdown")}
+    with caplog.at_level("INFO", logger="rag.api"):
+        assert events(c.post("/api/collections", files=files))[-1][0] == "error"
+    assert "RuntimeError" in caplog.text and "secret-plan" not in caplog.text

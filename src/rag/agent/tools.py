@@ -43,6 +43,16 @@ SEARCH_DOCS: dict = {
     },
 }
 
+GENERIC_SEARCH_DOCS: dict = {
+    **SEARCH_DOCS,
+    "description": (
+        "Search the user's uploaded documents. Call it before answering any question, and once "
+        "per part of a multi-part question. Use short keyword-style queries with the words the "
+        "documents are likely to use. Returns numbered passages, each with its title; cite "
+        "them by number."
+    ),
+}
+
 
 def parse_search_args(raw: str) -> tuple[str, int] | str:
     """Return (query, k) from the model's JSON arguments, or a sentence the model can read."""

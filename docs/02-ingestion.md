@@ -166,7 +166,8 @@ found under it are deleted. Always pass the corpus root, never a subfolder (or u
 
 ## Trade-offs
 
-- Heading split assumes well-structured Markdown. True for k8s docs, false for scanned PDFs.
+- Heading split assumes well-structured Markdown. True for k8s docs, false for uploaded PDFs:
+  their extracted text has no headings, so it splits by size only (and scans have no text at all).
 - Hard-splitting oversized paragraphs (often big code blocks or tables) can cut mid-line. Rare
   in this corpus; revisit if eval failures point here.
 - Characters, not tokens: simpler and model-independent, slightly imprecise budget.

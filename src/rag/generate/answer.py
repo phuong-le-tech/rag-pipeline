@@ -6,7 +6,7 @@ from typing import Protocol
 
 from rag.generate.citations import check_citations
 from rag.generate.generator import Generator
-from rag.generate.prompt import REFUSAL, build_prompt
+from rag.generate.prompt import REFUSAL, SYSTEM_PROMPT, build_prompt
 from rag.retrieval.retriever import RetrieverConfig
 from rag.retrieval.search import Hit
 
@@ -45,13 +45,13 @@ def finish_answer(text: str, hits: tuple[Hit, ...]) -> Answer:
 
 
 def stream_answer(
-    question: str, hits: tuple[Hit, ...], generator: Generator
+    question: str, hits: tuple[Hit, ...], generator: Generator, system: str = SYSTEM_PROMPT
 ) -> Iterator[str | Answer]:
     """Yield answer tokens as they arrive, then the validated ``Answer`` last."""
     if not hits:
         yield _refusal()  # nothing relevant: refuse without paying for an LLM call
         return
-    system, user = build_prompt(question, hits)
+    system, user = build_prompt(question, hits, system)
     pieces = []
     for piece in generator.stream(system, user):
         pieces.append(piece)
